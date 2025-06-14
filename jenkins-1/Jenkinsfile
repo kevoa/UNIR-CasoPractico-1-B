@@ -261,10 +261,12 @@ pipeline {
                         sh 'sleep 10' // Ajusta esto según la duración de tu test JMeter
 
                         echo 'Guardando reportes de rendimiento JMeter...'
-                        performanceReport(
-                            sourceDataFiles: 'test/jmeter/results/jmeter_results.jtl'
-                            failOnError: false
-                        )
+                        // Usar catchError para que el pipeline no falle si perfReport tiene problemas
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                            performanceReport(
+                                sourceDataFiles: 'test/jmeter/results/jmeter_results.jtl'
+                            )
+                        }
                     } finally {
                         echo 'Deteniendo y eliminando contenedores de prueba (Performance) para un workspace limpio...'
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
