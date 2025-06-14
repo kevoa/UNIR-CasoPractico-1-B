@@ -311,8 +311,8 @@ pipeline {
                     sh 'coverage xml -o reports/coverage.xml'
                     sh 'coverage html -d reports/coverage_html_report'
 
-                    // AJUSTE: Usar coberturaAdapter(pattern: 'reports/coverage.xml')
-                    // Esta sintaxis es la que esperaríamos del plugin 'Coverage' si soporta Cobertura.
+                    // 'recordCoverage' publica los resultados de cobertura usando el plugin Cobertura.
+                    // 'qualityGates' define los baremos de aceptación para el build basándose en los requisitos.
                     recordCoverage(
                         adapters: [
                             coberturaAdapter(pattern: 'reports/coverage.xml')
@@ -342,12 +342,13 @@ pipeline {
                 echo 'Fin del Pipeline. Recopilando todos los reportes...'
                 sh 'mkdir -p reports'
 
-                unstash name: 'unitTestReports',   quiet: true
-                unstash name: 'restTestReports',   quiet: true
-                unstash name: 'flake8Reports',     quiet: true
-                unstash name: 'banditReports',     quiet: true
-                unstash name: 'jmeterReports',     quiet: true
-                unstash name: 'coverageReports',   quiet: true
+                // IMPORTANTE: Eliminados 'quiet: true' de los unstash, ya que no es un parámetro válido.
+                unstash name: 'unitTestReports'
+                unstash name: 'restTestReports'
+                unstash name: 'flake8Reports'
+                unstash name: 'banditReports'
+                unstash name: 'jmeterReports'
+                unstash name: 'coverageReports'
 
                 junit 'reports/TEST-unit.xml'
                 junit 'reports/TEST-rest.xml'
