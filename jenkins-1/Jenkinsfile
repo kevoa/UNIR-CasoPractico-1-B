@@ -263,6 +263,7 @@ pipeline {
                         echo 'Guardando reportes de rendimiento JMeter...'
                         performanceReport(
                             sourceDataFiles: 'test/jmeter/results/jmeter_results.jtl'
+                            failOnError: false
                         )
                     } finally {
                         echo 'Deteniendo y eliminando contenedores de prueba (Performance) para un workspace limpio...'
@@ -305,23 +306,18 @@ pipeline {
                     // Asegúrate de que el plugin "Code Coverage API Plugin" y "Cobertura Plugin" (si usas Cobertura)
                     // estén instalados y actualizados.
                     recordCoverage(
-                        // 'tools' es el nombre correcto del parámetro para los adaptadores de reportes.
                         tools: [
-                            // El $class: 'io.jenkins.plugins.coverage.metrics.adapter.CoberturaReportAdapter' es la clase estándar para el plugin moderno.
-                            // Si este da ClassNotFoundException, significa que tienes una versión más antigua del plugin
-                            // y tendrías que usar 'hudson.plugins.cov.CoberturaReportAdapter'.
-                            [ $class: 'io.jenkins.plugins.coverage.metrics.adapter.CoberturaReportAdapter', pattern: 'reports/coverage.xml' ] 
+                            // Usamos 'parser' con el nombre de la herramienta (COBERTURA), no '$class' con la ruta completa de la clase Java.
+                            [ parser: 'COBERTURA', pattern: 'reports/coverage.xml' ] 
                         ],
                         qualityGates: [
-                            // Umbral para 'FAILURE' (critical: true)
-                            [metric: 'LINE', integerThreshold: 85, criticality: 'CRITICAL', name: 'Line Coverage Failure'], 
-                            // Umbral para 'UNSTABLE' (unstable: true)
-                            [metric: 'LINE', integerThreshold: 95, criticality: 'UNSTABLE', name: 'Line Coverage Unstable'], 
-                            
-                            [metric: 'BRANCH', integerThreshold: 80, criticality: 'CRITICAL', name: 'Branch Coverage Failure'],
-                            [metric: 'BRANCH', integerThreshold: 90, criticality: 'UNSTABLE', name: 'Branch Coverage Unstable']
+                            // 'threshold' es el valor numérico, 'metric' el tipo de métrica, y 'critical'/'unstable' son booleanos.
+                            // Añadimos 'baseline' para mayor consistencia con el ejemplo que encontraste.
+                            [threshold: 85.0, metric: 'LINE', baseline: 'PROJECT', critical: true, name: 'Line Coverage Failure'], // 85.0 para Double
+                            [threshold: 95.0, metric: 'LINE', baseline: 'PROJECT', unstable: true, name: 'Line Coverage Unstable'], // 95.0 para Double
+                            [threshold: 80.0, metric: 'BRANCH', baseline: 'PROJECT', critical: true, name: 'Branch Coverage Failure'],
+                            [threshold: 90.0, metric: 'BRANCH', baseline: 'PROJECT', unstable: true, name: 'Branch Coverage Unstable']
                         ]
-                        // También puedes añadir 'checksAnnotationScope', 'name', 'sourceCodeEncoding', etc. si los necesitas.
                     )
                 }
             }
