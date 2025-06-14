@@ -98,6 +98,7 @@ services:
       - devops_network
     depends_on:
       - python-app # JMeter necesita que python-app esté levantado
+    command: ["-n"]
 
 
 networks:
