@@ -161,7 +161,7 @@ pipeline {
             }
             post {
                 always {
-                    junit 'reports/TEST-rest.xml' // Publicar resultados JUnit
+                    junit 'reports/TEST-rest.xml'
                     script { echo 'Pruebas de integración (REST) finalizadas. Siempre se mostrará en verde.' }
                 }
             }
@@ -170,7 +170,6 @@ pipeline {
         // Etapa 4: Análisis de Código Estático (Flake8)
         stage('4. Static Code Analysis (Flake8)') {
             agent {
-                // Usa el agente general. Asegúrate de que tiene Python y Flake8 instalados.
                 label 'agent-ssh-jenkins-1-general'
             }
             steps {
@@ -183,17 +182,15 @@ pipeline {
                     sh 'pip install -r requirements.txt --break-system-packages'
 
                     echo 'Ejecutando pruebas de análisis de código estático (flake8)...'
-                    // Ejecuta flake8 y redirige la salida a un archivo 'flake8.out'.
-                    // '--format=pylint' para un formato que Warnings-NG puede parsear.
-                    // '--exit-zero' para que flake8 no falle el comando shell si encuentra hallazgos.
-                    // '|| true' asegura que el paso de shell no falle directamente, permitiendo que recordIssues gestione el estado.
                     sh 'flake8 --format=pylint --exit-zero app > reports/flake8.out || true'
 
-                    // AJUSTE: Usar tool(id: 'flake8', name: 'Flake8', pattern: 'reports/flake8.out')
-                    // Esta sintaxis es robusta y compatible con el plugin 'Warnings' (antes Warnings Next Generation).
+                    // SOLUCIÓN FINAL para Warnings plugin: usar flake8() y bandit() directamente
+                    // Si el plugin 'Warnings' (antes 'Warnings Next Generation') está correctamente instalado
+                    // y sus métodos DSL aprobados (si Jenkins los pide en Script Approval),
+                    // esta sintaxis es la que DEBE funcionar.
                     recordIssues(
                         tools: [
-                            tool(id: 'flake8', name: 'Flake8', pattern: 'reports/flake8.out')
+                            flake8(pattern: 'reports/flake8.out')
                         ],
                         qualityGates: [
                             [threshold: 10, type: 'TOTAL', result: 'FAILURE', name: 'Flake8 Unhealthy Threshold'],
@@ -204,9 +201,7 @@ pipeline {
             }
             post {
                 always {
-                    // Archivar el archivo de salida de flake8 como artefacto para referencia.
                     archiveArtifacts artifacts: 'reports/flake8.out', allowEmptyArchive: true
-                    // 'stash' el reporte para que el 'post' final pueda acceder a él.
                     stash name: 'flake8Reports', includes: 'reports/flake8.out', allowEmpty: true
                     script { echo 'Análisis de Flake8 completado. El pipeline continuará la ejecución.' }
                 }
@@ -216,7 +211,6 @@ pipeline {
         // Etapa 5: Pruebas de Seguridad (Bandit)
         stage('5. Security Test (Bandit)') {
             agent {
-                // Usa el agente general. Asegúrate de que tiene Python y Bandit instalados.
                 label 'agent-ssh-jenkins-1-general'
             }
             steps {
@@ -231,10 +225,10 @@ pipeline {
                     echo 'Ejecutando pruebas de seguridad (Bandit)...'
                     sh 'bandit -r app -f custom -o reports/bandit.out --msg-template "{abspath}:{line}: {severity}: {test_id}: {msg}" || true'
 
-                    // AJUSTE: Usar tool(id: 'bandit', name: 'Bandit', pattern: 'reports/bandit.out')
+                    // SOLUCIÓN FINAL para Warnings plugin: usar flake8() y bandit() directamente
                     recordIssues(
                         tools: [
-                            tool(id: 'bandit', name: 'Bandit', pattern: 'reports/bandit.out')
+                            bandit(pattern: 'reports/bandit.out')
                         ],
                         qualityGates: [
                             [threshold: 4, type: 'TOTAL', result: 'FAILURE', name: 'Bandit Unhealthy Threshold'],
@@ -245,9 +239,7 @@ pipeline {
             }
             post {
                 always {
-                    // Archivar el archivo de salida de bandit como artefacto para referencia.
                     archiveArtifacts artifacts: 'reports/bandit.out', allowEmptyArchive: true
-                    // 'stash' el reporte para que el 'post' final pueda acceder a él.
                     stash name: 'banditReports', includes: 'reports/bandit.out', allowEmpty: true
                     script { echo 'Análisis de Bandit completado. El pipeline continuará la ejecución.' }
                 }
@@ -257,7 +249,6 @@ pipeline {
         // Etapa 6: Pruebas de Rendimiento (JMeter)
         stage('6. Performance Tests (JMeter)') {
             agent {
-                // Este agente debe tener Docker y Docker Compose instalados para poder orquestar los servicios.
                 label 'agent-ssh-jenkins-1-general'
             }
             steps {
@@ -269,31 +260,21 @@ pipeline {
 
                     echo 'Iniciando entorno Docker para pruebas de rendimiento (python-app, wiremock_service, jmeter)...'
                     try {
-                        // Limpiar y levantar TODOS los servicios necesarios para esta etapa de performance.
-                        // Esto incluye 'jmeter' para asegurarse de que esté en la misma red que la aplicación.
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
                         sh 'docker compose -f docker-compose.yml up -d --build python-app wiremock_service jmeter'
-                        sh 'sleep 20' // Dar tiempo suficiente para que Flask y JMeter estén listos y la aplicación responda.
-                        sh 'docker compose -f docker-compose.yml logs python-app' // Mostrar logs de la aplicación
-                        sh 'docker compose -f docker-compose.yml logs jmeter' // Mostrar logs del contenedor JMeter
-
+                        sh 'sleep 20'
+                        sh 'docker compose -f docker-compose.yml logs python-app'
+                        sh 'docker compose -f docker-compose.yml logs jmeter'
+                        
                         echo 'Ejecutando pruebas de carga con JMeter desde el contenedor jmeter...'
-                        // 'docker compose exec jmeter' ejecuta el comando JMeter dentro del contenedor 'jmeter' ya levantado.
-                        // '-n': modo no-GUI.
-                        // '-t': ruta al test plan JMeter (.jmx).
-                        // '-l': ruta al archivo de resultados JTL.
-                        // '-e -o': generar informe HTML en el directorio especificado.
                         sh """
                         docker compose exec jmeter /bin/bash -c "jmeter -n -t /jmeter/apache-jmeter-5.6.3/bin/test_plans/flask.jmx -l /jmeter/apache-jmeter-5.6.3/bin/results/jmeter_results.jtl -e -o /jmeter/apache-jmeter-5.6.3/bin/results/html_report"
                         """
 
                         echo 'Guardando reportes de rendimiento JMeter...'
-                        // 'performanceReport' publica los resultados JTL en Jenkins (requiere el plugin Performance).
-                        // 'sourceDataFiles' apunta al archivo JTL generado.
                         performanceReport errorUnstableThreshold: 0, failureThreshold: 0, showTrendForLastBuilds: 5,
                             sourceDataFiles: 'test/jmeter/results/jmeter_results.jtl'
                     } finally {
-                        // Asegurar que los contenedores se detengan y eliminen al finalizar la etapa de performance.
                         echo 'Deteniendo y eliminando contenedores de prueba (Performance) para un workspace limpio...'
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
                     }
@@ -301,7 +282,6 @@ pipeline {
             }
             post {
                 always {
-                    // Archivar el informe HTML de JMeter y el archivo JTL como artefactos.
                     archiveArtifacts artifacts: 'test/jmeter/results/html_report/**/*', fingerprint: true, allowEmptyArchive: true
                     stash name: 'jmeterReports', includes: 'test/jmeter/results/jmeter_results.jtl,test/jmeter/results/html_report/**/*', allowEmpty: true
                     script { echo 'Pruebas de carga JMeter finalizadas.' }
@@ -312,7 +292,6 @@ pipeline {
         // Etapa 7: Pruebas de Cobertura de Código
         stage('7. Code Coverage') {
             agent {
-                // Esta etapa utiliza el mismo agente de pruebas unitarias.
                 label 'agent-ssh-jenkins-2-test-unit'
             }
             steps {
@@ -326,22 +305,17 @@ pipeline {
                     sh 'pip install -r requirements.txt --break-system-packages'
 
                     echo 'Ejecutando pruebas unitarias con cobertura para recolectar datos...'
-                    // 'coverage run' ejecuta las pruebas unitarias y recolecta datos de cobertura.
-                    // '--source=app': Especifica el directorio de tu código fuente a analizar.
-                    // '--omit=app/__init__.py,app/api.py': Excluye estos archivos del análisis de cobertura, según los apuntes.
                     sh 'coverage run --source=app --omit=app/__init__.py,app/api.py -m pytest test/unit'
 
                     echo 'Generando informe de cobertura en XML y HTML...'
-                    // 'coverage xml' genera un informe en formato Cobertura XML para el plugin de Jenkins.
                     sh 'coverage xml -o reports/coverage.xml'
-                    // 'coverage html' genera un informe HTML para una visualización más detallada (se archivará como artefacto).
                     sh 'coverage html -d reports/coverage_html_report'
 
-                    // AJUSTE: Usar adapter(id: 'cobertura', pattern: 'reports/coverage.xml')
-                    // Esta sintaxis es más robusta y compatible con el plugin 'Coverage'.
+                    // AJUSTE: Usar coberturaAdapter(pattern: 'reports/coverage.xml')
+                    // Esta sintaxis es la que esperaríamos del plugin 'Coverage' si soporta Cobertura.
                     recordCoverage(
                         adapters: [
-                            adapter(id: 'cobertura', pattern: 'reports/coverage.xml')
+                            coberturaAdapter(pattern: 'reports/coverage.xml')
                         ],
                         qualityGates: [
                             [threshold: 85, type: 'LINE', result: 'FAILURE', name: 'Line Coverage Failure'],
@@ -354,9 +328,7 @@ pipeline {
             }
             post {
                 always {
-                    // Archivar los informes de cobertura HTML y XML como artefactos del build de Jenkins.
                     archiveArtifacts artifacts: 'reports/coverage.xml, reports/coverage_html_report/**/*', fingerprint: true, allowEmptyArchive: true
-                    // 'stash' los informes para que la sección 'post' final pueda acceder a ellos.
                     stash name: 'coverageReports', includes: 'reports/coverage.xml,reports/coverage_html_report/**/*', allowEmpty: true
                     script { echo 'Pruebas de cobertura finalizadas.' }
                 }
@@ -366,32 +338,26 @@ pipeline {
 
     post {
         always {
-            node('built-in') { // Se ejecuta en el agente principal de Jenkins (master)
+            node('built-in') {
                 echo 'Fin del Pipeline. Recopilando todos los reportes...'
-                sh 'mkdir -p reports' // Asegura que el directorio 'reports' exista en el master
+                sh 'mkdir -p reports'
 
-                // 'unstash' recupera los reportes generados en etapas anteriores por diferentes agentes.
-                // Importante: ¡He eliminado 'quiet: true' que causaba el error de compilación!
-                unstash name: 'unitTestReports'
-                unstash name: 'restTestReports'
-                unstash name: 'flake8Reports'
-                unstash name: 'banditReports'
-                unstash name: 'jmeterReports'
-                unstash name: 'coverageReports'
+                unstash name: 'unitTestReports',   quiet: true
+                unstash name: 'restTestReports',   quiet: true
+                unstash name: 'flake8Reports',     quiet: true
+                unstash name: 'banditReports',     quiet: true
+                unstash name: 'jmeterReports',     quiet: true
+                unstash name: 'coverageReports',   quiet: true
 
-                // Publica los resultados de JUnit para una vista consolidada en el master.
                 junit 'reports/TEST-unit.xml'
-                junit 'reports/TEST-rest.xml' // Publica también los resultados de las pruebas REST
+                junit 'reports/TEST-rest.xml'
 
-                // Archiva todos los reportes generados en el directorio 'reports' del master.
-                // Incluye XML, CSV, archivos .out (de flake8/bandit) y todos los archivos HTML generados.
                 archiveArtifacts artifacts: 'reports/*.xml,reports/*.csv,reports/**/*.out,reports/**/*html*', allowEmptyArchive: true
 
-                cleanWs() // Limpia el workspace del agente 'built-in' para el siguiente build
+                cleanWs()
             }
         }
         failure {
-            // Este bloque se ejecuta si alguna etapa falla (estado 'FAILURE')
             node('built-in') {
                 echo 'El pipeline falló.'
             }
