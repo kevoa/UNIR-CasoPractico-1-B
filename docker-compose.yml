@@ -12,6 +12,7 @@ services:
       - devops_network
     depends_on:
       - wiremock_service
+    user: "1000:1000"
     # tty: true 
   
   # Servicio para wiremock
@@ -26,6 +27,7 @@ services:
     command: ["--verbose"]
     networks:
       - devops_network
+    user: "1000:1000"
   
   # Servicio de Jenkins
   jenkins:
@@ -100,6 +102,7 @@ services:
       - devops_network
     depends_on:
       - python-app 
+    user: "1000:1000"
 
     command: ["-n", 
               "-t", "/jmeter_tests/flask.jmx", 
