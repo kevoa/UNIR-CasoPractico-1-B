@@ -92,22 +92,18 @@ services:
     image: justb4/jmeter:5.4 
     container_name: jmeter
     volumes:
-      # Monta tu carpeta local 'test/jmeter/test_plans' en la carpeta 'test_plans' dentro de la instalación de JMeter
-      # Esto significa que /opt/jmeter/bin/test_plans/flask.jmx APUNTARÁ a ./test/jmeter/test_plans/flask.jmx
-      - ./test/jmeter/test_plans:/opt/jmeter/bin/test_plans 
-
-      # Monta tu carpeta local 'test/jmeter/results' en la carpeta 'results' dentro de la instalación de JMeter
-      - ./test/jmeter/results:/opt/jmeter/bin/results 
+      - ./test/jmeter/test_plans:/jmeter_tests 
+      
+      - ./test/jmeter/results:/jmeter_results 
     networks:
       - devops_network
     depends_on:
-      - python-app # JMeter necesita que python-app esté levantado
-    # Este es el comando que JMeter ejecutará al INICIAR el contenedor
+      - python-app 
     command: ["-n", 
-              "-t", "/opt/jmeter/bin/test_plans/flask.jmx", 
-              "-l", "/opt/jmeter/bin/results/jmeter_results.jtl", 
+              "-t", "/jmeter_tests/flask.jmx", # El test plan está en /jmeter_tests
+              "-l", "/jmeter_results/jmeter_results.jtl", # El log de resultados va a /jmeter_results
               "-e", 
-              "-o", "/opt/jmeter/bin/results/html_report"]
+              "-o", "/jmeter_results/html_report"] # El reporte HTML va a /jmeter_results
               
 networks:
   devops_network:
