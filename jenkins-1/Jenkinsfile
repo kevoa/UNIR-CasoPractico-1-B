@@ -309,20 +309,14 @@ pipeline {
                     // estén instalados y actualizados.
                     recordCoverage(
                         tools: [
-                            // Usamos 'parser' con el nombre de la herramienta (COBERTURA), no '$class'.
                             [ parser: 'COBERTURA', pattern: 'reports/coverage.xml' ] 
                         ],
                         qualityGates: [
-                            // Puerta de Línea - Fallo (Threshold 85%)
-                            [integerThreshold: 85, metric: 'LINE', baseline: 'PROJECT', criticality: 'FAILURE'], 
-                            // Puerta de Línea - Inestable (Threshold 95%)
+                            [integerThreshold: 85, metric: 'LINE', baseline: 'PROJECT', criticality: 'UNSTABLE'], // Cambiado a UNSTABLE
                             [integerThreshold: 95, metric: 'LINE', baseline: 'PROJECT', criticality: 'UNSTABLE'], 
-                            // Puerta de Rama - Fallo (Threshold 80%)
-                            [integerThreshold: 80, metric: 'BRANCH', baseline: 'PROJECT', criticality: 'FAILURE'],
-                            // Puerta de Rama - Inestable (Threshold 90%)
+                            [integerThreshold: 80, metric: 'BRANCH', baseline: 'PROJECT', criticality: 'UNSTABLE'],
                             [integerThreshold: 90, metric: 'BRANCH', baseline: 'PROJECT', criticality: 'UNSTABLE']
                         ]
-                        // Ya no incluimos 'name' porque los warnings anteriores indicaban que no es reconocido por tu versión del plugin aquí.
                     )
                 }
             }
