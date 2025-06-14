@@ -1,97 +1,150 @@
 pipeline {
-    agent none
+    agent none // El pipeline en sí no se ejecuta en un agente específico al inicio
 
     environment {
+        // Variables de entorno generales para la aplicación, accesibles en todo el pipeline
         FLASK_APP = 'app.api:api_application'
         FLASK_ENV = 'development'
         FLASK_RUN_HOST = '0.0.0.0'
         FLASK_RUN_PORT = '5000'
-        WIREMOCK_URL = 'http://wiremock_service:8080'
-        FLASK_URL = 'http://python-app:5000'
+        WIREMOCK_URL = 'http://wiremock_service:8080' // URL para Wiremock dentro de la red Docker
+        FLASK_URL = 'http://python-app:5000' // URL para Flask dentro de la red Docker
     }
 
     stages {
+        // Etapa 1: Obtener el código fuente del repositorio y preparar el workspace
         stage('1. Get Code & Prepare Workspace') {
-            agent { label 'built-in' }
+            agent {
+                label 'built-in' // Esta etapa se ejecuta en el agente principal de Jenkins (master)
+            }
             steps {
-                sh 'whoami'
-                sh 'hostname'
-                echo "Workspace: ${env.WORKSPACE}"
+                sh 'whoami' // Muestra el usuario actual del agente
+                sh 'hostname' // Muestra el hostname del agente
+                echo "Workspace: ${env.WORKSPACE}" // Muestra la ruta del workspace
+
                 echo 'Descargando repositorio...'
+                // A pesar de ser un Jenkinsfile manual, este paso es CRÍTICO.
+                // Le dice a Jenkins que clone el código fuente de tu aplicación desde el repositorio Git.
+                // Asegúrate de que el job de Jenkins tenga configurado el URL del repositorio Git
+                // y las credenciales si es necesario, incluso si el Jenkinsfile es manual.
                 checkout scm
-                sh 'ls -la'
+                sh 'ls -la' // Lista los archivos en el workspace para verificación
                 echo 'Creando directorio de reportes...'
-                sh 'mkdir -p reports'
-                echo 'Guardando el código fuente y archivos del workspace...'
+                sh 'mkdir -p reports' // Crea el directorio 'reports' para almacenar los resultados de las pruebas
+
+                echo 'Guardando el código fuente y archivos del workspace para otras etapas...'
+                // 'stash' guarda los archivos del workspace para que otras etapas en diferentes agentes puedan acceder a ellos.
                 stash name: 'sourceAndConfig', includes: '**/*'
             }
         }
 
+        // Etapa 2: Ejecución de Pruebas Unitarias
         stage('2. Unit Tests') {
-            agent { label 'agent-ssh-jenkins-2-test-unit' }
+            agent {
+                // Esta etapa se ejecuta en el agente específico para pruebas unitarias.
+                // Asegúrate de que este agente esté configurado en Jenkins con la etiqueta 'agent-ssh-jenkins-2-test-unit'.
+                label 'agent-ssh-jenkins-2-test-unit'
+            }
             steps {
                 sh 'whoami'
                 sh 'hostname'
                 echo "Workspace: ${env.WORKSPACE}"
-                cleanWs()
-                unstash name: 'sourceAndConfig'
+                echo 'Preparando workspace para pruebas unitarias...'
+                cleanWs() // Limpia el workspace actual para asegurar un entorno fresco
+                unstash name: 'sourceAndConfig' // 'unstash' recupera los archivos del workspace guardados previamente
                 sh 'ls -la'
-                sh 'mkdir -p reports'
-                echo 'Instalando dependencias de Python...'
-                sh 'pip install -r requirements.txt'
+                sh 'mkdir -p reports' // Asegura que el directorio 'reports' exista en este agente
+
+                echo 'Instalando dependencias de Python (desde requirements.txt)...'
+                // Instala todas las dependencias listadas en 'requirements.txt'.
+                // La opción '--break-system-packages' es necesaria en algunas distribuciones de Linux/Python recientes.
+                sh 'pip install -r requirements.txt --break-system-packages'
+
                 echo 'Realizando pruebas unitarias...'
+                // Ejecuta pytest para las pruebas unitarias en 'test/unit'.
+                // '--junitxml' genera un informe en formato JUnit XML, que Jenkins puede leer.
                 sh 'python3 -m pytest test/unit --junitxml=reports/TEST-unit.xml'
                 echo 'Pruebas unitarias realizadas.'
+
+                // 'stash' guarda los resultados de las pruebas unitarias para que la sección 'post' pueda publicarlos.
                 stash name: 'unitTestReports', includes: 'reports/TEST-unit.xml', allowEmpty: true
             }
             post {
+                // La sección 'post' se ejecuta después de que los 'steps' de la etapa han terminado.
                 always {
+                    // 'junit' publica los resultados de las pruebas unitarias en Jenkins.
+                    // Según los requisitos, esta etapa siempre se mostrará en verde.
                     junit 'reports/TEST-unit.xml'
                     script { echo 'Pruebas unitarias finalizadas. Siempre se mostrará en verde.' }
                 }
             }
         }
 
+        // Etapa 3: Pruebas de Integración (Rest)
         stage('3. Rest Tests') {
-            agent { label 'agent-ssh-jenkins-2-test-rest' }
+            agent {
+                // Esta etapa se ejecuta en el agente específico para pruebas REST.
+                // Asegúrate de que este agente esté configurado en Jenkins con la etiqueta 'agent-ssh-jenkins-2-test-rest'.
+                label 'agent-ssh-jenkins-2-test-rest'
+            }
             steps {
-                script {
+                script { // El bloque 'script' permite usar lógica Groovy más compleja
                     sh 'whoami'
                     sh 'hostname'
                     echo "Workspace: ${env.WORKSPACE}"
+                    echo 'Preparando workspace para pruebas de servicio...'
                     cleanWs()
                     unstash name: 'sourceAndConfig'
                     sh 'ls -la'
                     echo 'Instalando dependencias de Python...'
-                    sh 'pip install -r requirements.txt'
+                    sh 'pip install -r requirements.txt --break-system-packages'
+
                     echo 'Iniciando entorno Docker para pruebas REST (python-app y wiremock_service)...'
                     def FLASK_HOST_PORT_REST = ''
                     def WIREMOCK_HOST_PORT_REST = ''
                     try {
+                        // Limpiar cualquier contenedor anterior para asegurar un entorno de prueba aislado
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
+
+                        // Verificación de mappings de WireMock (debug)
                         sh 'echo "DEBUG: Verificando directorio de mappings de WireMock en el workspace..."'
                         sh 'ls -la ./test/wiremock/mappings/'
                         sh 'echo "DEBUG: Contenido de ./test/wiremock/mappings/sqrt64.json:"'
                         sh 'cat ./test/wiremock/mappings/sqrt64.json || echo "ERROR: sqrt64.json no encontrado"'
+
                         echo 'Construyendo y levantando entorno para pruebas python-app y wiremock...'
+                        // Levantar solo los servicios necesarios para las pruebas REST
                         sh 'docker compose -f docker-compose.yml up -d --build python-app wiremock_service'
+
                         echo 'Esperando a que los servicios se inicien...'
-                        sh 'sleep 15'
-                        sh 'docker compose -f docker-compose.yml logs python-app'
-                        sh 'docker compose -f docker-compose.yml exec python-app env'
-                        sh 'docker compose -f docker-compose.yml logs wiremock_service'
+                        sh 'sleep 15' // Espera para que los servicios estén completamente levantados
+                        sh 'docker compose -f docker-compose.yml logs python-app' // Muestra logs de la aplicación
+                        sh 'docker compose -f docker-compose.yml exec python-app env' // Muestra variables de entorno en la aplicación
+                        sh 'docker compose -f docker-compose.yml logs wiremock_service' // Muestra logs de wiremock
+
+                        // Obtener los puertos mapeados dinámicamente al host por docker compose
+                        // Esto es útil si las pruebas REST se conectan desde el host del agente a los contenedores
                         FLASK_HOST_PORT_REST = sh(script: 'docker compose -f docker-compose.yml port python-app 5000', returnStdout: true).trim().split(':')[1]
                         WIREMOCK_HOST_PORT_REST = sh(script: 'docker compose -f docker-compose.yml port wiremock_service 8080', returnStdout: true).trim().split(':')[1]
+
                         echo "DEBUG: FLASK_HOST_PORT_REST detectado: ${FLASK_HOST_PORT_REST}"
                         echo "DEBUG: WIREMOCK_HOST_PORT_REST detectado: ${WIREMOCK_HOST_PORT_REST}"
+
+                        // Construir las URLs para las pruebas REST usando host.docker.internal para acceder a los puertos del host
                         def flaskUrlForTestRest = "http://host.docker.internal:${FLASK_HOST_PORT_REST}"
                         def wiremockUrlForTestRest = "http://host.docker.internal:${WIREMOCK_HOST_PORT_REST}"
+
                         echo "DEBUG: Intentando curl a python-app en ${flaskUrlForTestRest}/calc/add/1/2"
                         sh "curl -v --connect-timeout 15 ${flaskUrlForTestRest}/calc/add/1/2 || echo 'Curl a python-app falló'"
+
                         echo "DEBUG: Intentando curl a wiremock en ${wiremockUrlForTestRest}/__admin/mappings"
                         sh "curl -v --connect-timeout 15 ${wiremockUrlForTestRest}/__admin/mappings || echo 'Curl a wiremock falló'"
+
                         sh 'mkdir -p reports'
+
                         echo 'Ejecutando pruebas de servicio (REST)...'
+                        // Ejecutar pytest para las pruebas de integración.
+                        // Se pasan las URLs como variables de entorno a pytest.
                         sh """
                             FLASK_TEST_URL="${flaskUrlForTestRest}" \
                             WIREMOCK_TEST_URL="${wiremockUrlForTestRest}" \
@@ -99,6 +152,7 @@ pipeline {
                         """
                         echo 'Pruebas de servicio ejecutadas.'
                     } finally {
+                        // Asegurar que los contenedores se detengan y eliminen incluso si las pruebas fallan
                         echo 'Deteniendo y eliminando contenedores de prueba (REST) para un workspace limpio...'
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
                     }
@@ -108,14 +162,18 @@ pipeline {
             }
             post {
                 always {
-                    junit 'reports/TEST-rest.xml'
+                    junit 'reports/TEST-rest.xml' // Publicar resultados JUnit
                     script { echo 'Pruebas de integración (REST) finalizadas. Siempre se mostrará en verde.' }
                 }
             }
         }
 
+        // Etapa 4: Análisis de Código Estático (Flake8)
         stage('4. Static Code Analysis (Flake8)') {
-            agent { label 'agent-ssh-jenkins-1-general' }
+            agent {
+                // Usa el agente general. Asegúrate de que tiene Python y Flake8 instalados.
+                label 'agent-ssh-jenkins-1-general'
+            }
             steps {
                 script {
                     echo 'Preparando workspace para análisis estático...'
@@ -123,37 +181,44 @@ pipeline {
                     unstash name: 'sourceAndConfig'
                     sh 'ls -la'
                     echo 'Instalando dependencias de Python (incluyendo flake8)...'
-                    sh 'pip install -r requirements.txt'
+                    sh 'pip install -r requirements.txt --break-system-packages'
 
                     echo 'Ejecutando pruebas de análisis de código estático (flake8)...'
-                    // Redirigir salida a archivo para que Warnings-NG la lea
-                    // `|| true` para que el comando no falle si flake8 encuentra hallazgos (exit code != 0)
+                    // Ejecuta flake8 y redirige la salida a un archivo 'flake8.out'.
+                    // '--format=pylint' para un formato que Warnings-NG puede parsear.
+                    // '--exit-zero' para que flake8 no falle el comando shell si encuentra hallazgos.
+                    // '|| true' asegura que el paso de shell no falle directamente, permitiendo que recordIssues gestione el estado.
                     sh 'flake8 --format=pylint --exit-zero app > reports/flake8.out || true'
 
-                    // Publicar resultados con Warnings Next Generation Plugin y definir baremos
+                    // Publicar resultados con Warnings Next Generation Plugin y definir baremos (Quality Gates)
                     recordIssues tools: [
-                        flake8(pattern: 'reports/flake8.out')
+                        flake8(pattern: 'reports/flake8.out') // Indica a Jenkins dónde encontrar el informe de Flake8
                     ],
                     qualityGates: [
-                        // Si se encuentran 10 o más hallazgos, debe marcarse la etapa y el build como unhealthy (rojo)
+                        // Si se encuentran 10 o más hallazgos, el build será FAILURE (rojo).
                         [threshold: 10, type: 'TOTAL', result: 'FAILURE', name: 'Flake8 Unhealthy Threshold'],
-                        // Si se encuentran 8 o más hallazgos, debe marcarse la etapa y el build como unstable (amarillo/naranja)
+                        // Si se encuentran 8 o más hallazgos (pero menos de 10), el build será UNSTABLE (amarillo/naranja).
                         [threshold: 8, type: 'TOTAL', result: 'UNSTABLE', name: 'Flake8 Unstable Threshold']
                     ]
                 }
             }
             post {
                 always {
-                    // Archivar el archivo de salida de flake8 para referencia
+                    // Archivar el archivo de salida de flake8 como artefacto para referencia.
                     archiveArtifacts artifacts: 'reports/flake8.out', allowEmptyArchive: true
+                    // 'stash' el reporte para que el 'post' final pueda acceder a él.
                     stash name: 'flake8Reports', includes: 'reports/flake8.out', allowEmpty: true
                     script { echo 'Análisis de Flake8 completado. El pipeline continuará la ejecución.' }
                 }
             }
         }
 
+        // Etapa 5: Pruebas de Seguridad (Bandit)
         stage('5. Security Test (Bandit)') {
-            agent { label 'agent-ssh-jenkins-1-general' }
+            agent {
+                // Usa el agente general. Asegúrate de que tiene Python y Bandit instalados.
+                label 'agent-ssh-jenkins-1-general'
+            }
             steps {
                 script {
                     echo 'Preparando workspace para pruebas de seguridad...'
@@ -161,37 +226,43 @@ pipeline {
                     unstash name: 'sourceAndConfig'
                     sh 'ls -la'
                     echo 'Instalando dependencias de Python (incluyendo bandit)...'
-                    sh 'pip install -r requirements.txt'
+                    sh 'pip install -r requirements.txt --break-system-packages'
 
                     echo 'Ejecutando pruebas de seguridad (Bandit)...'
-                    // Redirigir salida a archivo para que Warnings-NG la lea
-                    // Especificar --format=custom y --msg-template como en la diapositiva para mejor parsing
+                    // Ejecuta bandit y redirige la salida a un archivo 'bandit.out'.
+                    // '--format=custom --msg-template' para un formato específico que Warnings-NG puede parsear.
+                    // '|| true' asegura que el comando shell no falle si bandit encuentra hallazgos.
                     sh 'bandit -r app -f custom -o reports/bandit.out --msg-template "{abspath}:{line}: {severity}: {test_id}: {msg}" || true'
 
-                    // Publicar resultados con Warnings Next Generation Plugin y definir baremos
+                    // Publicar resultados con Warnings Next Generation Plugin y definir baremos (Quality Gates)
                     recordIssues tools: [
                         bandit(pattern: 'reports/bandit.out') // El parser para bandit se infiere del formato de salida
                     ],
                     qualityGates: [
-                        // Si se encuentran 4 o más hallazgos, debe marcarse la etapa y el build como unhealthy (rojo)
+                        // Si se encuentran 4 o más hallazgos, el build será FAILURE (rojo).
                         [threshold: 4, type: 'TOTAL', result: 'FAILURE', name: 'Bandit Unhealthy Threshold'],
-                        // Si se encuentran 2 o más hallazgos, debe marcarse la etapa y el build como unstable (amarillo/naranja)
+                        // Si se encuentran 2 o más hallazgos (pero menos de 4), el build será UNSTABLE (amarillo/naranja).
                         [threshold: 2, type: 'TOTAL', result: 'UNSTABLE', name: 'Bandit Unstable Threshold']
                     ]
                 }
             }
             post {
                 always {
-                    // Archivar el archivo de salida de bandit para referencia
+                    // Archivar el archivo de salida de bandit como artefacto para referencia.
                     archiveArtifacts artifacts: 'reports/bandit.out', allowEmptyArchive: true
+                    // 'stash' el reporte para que el 'post' final pueda acceder a él.
                     stash name: 'banditReports', includes: 'reports/bandit.out', allowEmpty: true
                     script { echo 'Análisis de Bandit completado. El pipeline continuará la ejecución.' }
                 }
             }
         }
 
+        // Etapa 6: Pruebas de Rendimiento (JMeter)
         stage('6. Performance Tests (JMeter)') {
-            agent { label 'agent-ssh-jenkins-1-general' }
+            agent {
+                // Este agente debe tener Docker y Docker Compose instalados para poder orquestar los servicios.
+                label 'agent-ssh-jenkins-1-general'
+            }
             steps {
                 script {
                     echo 'Preparando workspace para pruebas de rendimiento...'
@@ -201,24 +272,31 @@ pipeline {
 
                     echo 'Iniciando entorno Docker para pruebas de rendimiento (python-app, wiremock_service, jmeter)...'
                     try {
+                        // Limpiar y levantar TODOS los servicios necesarios para esta etapa de performance.
+                        // Esto incluye 'jmeter' para asegurarse de que esté en la misma red que la aplicación.
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
                         sh 'docker compose -f docker-compose.yml up -d --build python-app wiremock_service jmeter'
-                        sh 'sleep 20'
-                        sh 'docker compose -f docker-compose.yml logs python-app'
-                        sh 'docker compose -f docker-compose.yml logs jmeter'
-                        
+                        sh 'sleep 20' // Dar tiempo suficiente para que Flask y JMeter estén listos y la aplicación responda.
+                        sh 'docker compose -f docker-compose.yml logs python-app' // Muestra logs de la aplicación
+                        sh 'docker compose -f docker-compose.yml logs jmeter' // Muestra logs del contenedor JMeter
+
                         echo 'Ejecutando pruebas de carga con JMeter desde el contenedor jmeter...'
-                        // jmeter -n -t test\jmeter\flask.jmx –f –l flask.jtl
-                        // La opción -f es para forzar la sobrescritura del JTL, pero no siempre es necesaria
-                        // La opción -e -o para generar el informe HTML
+                        // 'docker compose exec jmeter' ejecuta el comando JMeter dentro del contenedor 'jmeter' ya levantado.
+                        // '-n': modo no-GUI.
+                        // '-t': ruta al test plan JMeter (.jmx).
+                        // '-l': ruta al archivo de resultados JTL.
+                        // '-e -o': generar informe HTML en el directorio especificado.
                         sh """
                         docker compose exec jmeter /bin/bash -c "jmeter -n -t /jmeter/apache-jmeter-5.6.3/bin/test_plans/flask.jmx -l /jmeter/apache-jmeter-5.6.3/bin/results/jmeter_results.jtl -e -o /jmeter/apache-jmeter-5.6.3/bin/results/html_report"
                         """
 
                         echo 'Guardando reportes de rendimiento JMeter...'
+                        // 'performanceReport' publica los resultados JTL en Jenkins (requiere el plugin Performance).
+                        // 'sourceDataFiles' apunta al archivo JTL generado.
                         performanceReport errorUnstableThreshold: 0, failureThreshold: 0, showTrendForLastBuilds: 5,
                             sourceDataFiles: 'test/jmeter/results/jmeter_results.jtl'
                     } finally {
+                        // Asegurar que los contenedores se detengan y eliminen al finalizar la etapa de performance.
                         echo 'Deteniendo y eliminando contenedores de prueba (Performance) para un workspace limpio...'
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
                     }
@@ -226,6 +304,7 @@ pipeline {
             }
             post {
                 always {
+                    // Archivar el informe HTML de JMeter y el archivo JTL como artefactos.
                     archiveArtifacts artifacts: 'test/jmeter/results/html_report/**/*', fingerprint: true, allowEmptyArchive: true
                     stash name: 'jmeterReports', includes: 'test/jmeter/results/jmeter_results.jtl,test/jmeter/results/html_report/**/*', allowEmpty: true
                     script { echo 'Pruebas de carga JMeter finalizadas.' }
@@ -233,8 +312,12 @@ pipeline {
             }
         }
 
+        // Etapa 7: Pruebas de Cobertura de Código
         stage('7. Code Coverage') {
-            agent { label 'agent-ssh-jenkins-2-test-unit' }
+            agent {
+                // Esta etapa utiliza el mismo agente de pruebas unitarias.
+                label 'agent-ssh-jenkins-2-test-unit'
+            }
             steps {
                 script {
                     echo 'Preparando workspace para pruebas de cobertura...'
@@ -243,34 +326,44 @@ pipeline {
                     sh 'ls -la'
 
                     echo 'Instalando dependencias de Python (incluyendo coverage)...'
-                    sh 'pip install -r requirements.txt'
+                    sh 'pip install -r requirements.txt --break-system-packages'
 
                     echo 'Ejecutando pruebas unitarias con cobertura para recolectar datos...'
+                    // 'coverage run' ejecuta las pruebas unitarias y recolecta datos de cobertura.
+                    // '--source=app': Especifica el directorio de tu código fuente a analizar.
+                    // '--omit=app/__init__.py,app/api.py': Excluye estos archivos del análisis de cobertura, según los apuntes.
                     sh 'coverage run --source=app --omit=app/__init__.py,app/api.py -m pytest test/unit'
 
                     echo 'Generando informe de cobertura en XML y HTML...'
+                    // 'coverage xml' genera un informe en formato Cobertura XML para el plugin de Jenkins.
                     sh 'coverage xml -o reports/coverage.xml'
+                    // 'coverage html' genera un informe HTML para una visualización más detallada (se archivará como artefacto).
                     sh 'coverage html -d reports/coverage_html_report'
 
-                    // Publicar resultados con Cobertura plugin y definir baremos
+                    // 'recordCoverage' publica los resultados de cobertura usando el plugin Cobertura.
+                    // 'qualityGates' define los baremos de aceptación para el build basándose en los requisitos.
                     recordCoverage(
                         adapters: [
-                            coberturaAdapter('reports/coverage.xml')
+                            coberturaAdapter('reports/coverage.xml') // Adapta el XML generado por coverage.py
                         ],
                         qualityGates: [
-                            // Si la cobertura por líneas se encuentra entre 85 y 95, se marcará como unstable. Por encima será verde y, por debajo, rojo.
+                            // Si la cobertura por líneas es < 85, el build será FAILURE (rojo).
                             [threshold: 85, type: 'LINE', result: 'FAILURE', name: 'Line Coverage Failure'],
-                            [threshold: 95, type: 'LINE', result: 'UNSTABLE', name: 'Line Coverage Unstable'], // Si es > 95, es estable (verde)
-                            // Si la cobertura por ramas/condiciones se encuentra entre 80 y 90, se marcará como unstable. Por encima será verde y, por debajo, rojo.
+                            // Si la cobertura por líneas está entre 85 y 95 (no <85 y no >=95), el build será UNSTABLE.
+                            [threshold: 95, type: 'LINE', result: 'UNSTABLE', name: 'Line Coverage Unstable'],
+                            // Si la cobertura por ramas es < 80, el build será FAILURE (rojo).
                             [threshold: 80, type: 'BRANCH', result: 'FAILURE', name: 'Branch Coverage Failure'],
-                            [threshold: 90, type: 'BRANCH', result: 'UNSTABLE', name: 'Branch Coverage Unstable'] // Si es > 90, es estable (verde)
+                            // Si la cobertura por ramas está entre 80 y 90 (no <80 y no >=90), el build será UNSTABLE.
+                            [threshold: 90, type: 'BRANCH', result: 'UNSTABLE', name: 'Branch Coverage Unstable']
                         ]
                     )
                 }
             }
             post {
                 always {
+                    // Archivar los informes de cobertura HTML y XML como artefactos del build de Jenkins.
                     archiveArtifacts artifacts: 'reports/coverage.xml, reports/coverage_html_report/**/*', fingerprint: true, allowEmptyArchive: true
+                    // 'stash' los informes para que la sección 'post' final pueda acceder a ellos.
                     stash name: 'coverageReports', includes: 'reports/coverage.xml,reports/coverage_html_report/**/*', allowEmpty: true
                     script { echo 'Pruebas de cobertura finalizadas.' }
                 }
@@ -278,28 +371,35 @@ pipeline {
         }
     }
 
+    // Sección 'post' global del pipeline: se ejecuta al final de todo el pipeline
     post {
         always {
-            node('built-in') {
+            node('built-in') { // Se ejecuta en el agente principal de Jenkins (master)
                 echo 'Fin del Pipeline. Recopilando todos los reportes...'
-                sh 'mkdir -p reports'
+                sh 'mkdir -p reports' // Asegura que el directorio 'reports' exista en el master
 
-                unstash name: 'unitTestReports',   quiet: true
-                unstash name: 'restTestReports',   quiet: true
-                unstash name: 'flake8Reports',     quiet: true
-                unstash name: 'banditReports',     quiet: true
-                unstash name: 'jmeterReports',     quiet: true
-                unstash name: 'coverageReports',   quiet: true
+                // 'unstash' recupera los reportes generados en etapas anteriores por diferentes agentes.
+                // Importante: ¡He eliminado 'quiet: true' que causaba el error de compilación!
+                unstash name: 'unitTestReports'
+                unstash name: 'restTestReports'
+                unstash name: 'flake8Reports'
+                unstash name: 'banditReports'
+                unstash name: 'jmeterReports'
+                unstash name: 'coverageReports'
 
+                // Publica los resultados de JUnit para una vista consolidada en el master.
                 junit 'reports/TEST-unit.xml'
-                junit 'reports/TEST-rest.xml'
+                junit 'reports/TEST-rest.xml' // Publica también los resultados de las pruebas REST
 
+                // Archiva todos los reportes generados en el directorio 'reports' del master.
+                // Incluye XML, CSV, archivos .out (de flake8/bandit) y todos los archivos HTML generados.
                 archiveArtifacts artifacts: 'reports/*.xml,reports/*.csv,reports/**/*.out,reports/**/*html*', allowEmptyArchive: true
 
-                cleanWs()
+                cleanWs() // Limpia el workspace del agente 'built-in' para el siguiente build
             }
         }
         failure {
+            // Este bloque se ejecuta si alguna etapa falla (estado 'FAILURE')
             node('built-in') {
                 echo 'El pipeline falló.'
             }
