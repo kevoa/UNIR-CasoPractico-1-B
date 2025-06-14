@@ -313,17 +313,16 @@ pipeline {
                     // Asegúrate de que el plugin "Code Coverage API Plugin" y "Cobertura Plugin" (si usas Cobertura)
                     // estén instalados y actualizados.
                     recordCoverage(
-                        adapters: [
-                            [
-                                $class: 'io.jenkins.plugins.coverage.cobertura.CoberturaAdapter', // Nombre completo de la clase del adaptador Cobertura
-                                pattern: 'reports/coverage.xml'
-                            ]
+                        // Cambiamos 'adapters' a 'tools' y movemos la definición del adaptador dentro de él.
+                        tools: [
+                            [ $class: 'io.jenkins.plugins.coverage.metrics.adapter.CoberturaReportAdapter', pattern: 'reports/coverage.xml' ] 
+                            // [ $class: 'hudson.plugins.cov.CoberturaReportAdapter', pattern: 'reports/coverage.xml' ] // Para plugin Cobertura más antiguo
                         ],
                         qualityGates: [
-                            [threshold: 85, type: 'LINE', result: 'FAILURE', name: 'Line Coverage Failure'],
-                            [threshold: 95, type: 'LINE', result: 'UNSTABLE', name: 'Line Coverage Unstable'],
-                            [threshold: 80, type: 'BRANCH', result: 'FAILURE', name: 'Branch Coverage Failure'],
-                            [threshold: 90, type: 'BRANCH', result: 'UNSTABLE', name: 'Branch Coverage Unstable']
+                            [metric: 'LINE', threshold: 85, critical: true], 
+                            [metric: 'LINE', threshold: 95, unstable: true], 
+                            [metric: 'BRANCH', threshold: 80, critical: true],
+                            [metric: 'BRANCH', threshold: 90, unstable: true]
                         ]
                     )
                 }
