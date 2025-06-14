@@ -29,6 +29,10 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
         docker-compose-plugin && \
     rm -rf /var/lib/apt/lists/*
 
+COPY requirements.txt /tmp/requirements.txt
+
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt --break-system-packages
+
 # Paso 3: Añadir el usuario 'jenkins' (de la imagen base) al grupo 'root' (GID 0)
 # Esto debería darle los permisos de grupo sobre el docker.sock (que es root:root rw-rw----)
 RUN echo "Añadiendo usuario 'jenkins' al grupo 'root' (GID 0)..." && \

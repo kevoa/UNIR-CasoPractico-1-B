@@ -1,158 +1,308 @@
 pipeline {
-    agent {
-        label 'agent-ssh-jenkins-1-general'
+    agent none
+
+    environment {
+        FLASK_APP = 'app.api:api_application'
+        FLASK_ENV = 'development'
+        FLASK_RUN_HOST = '0.0.0.0'
+        FLASK_RUN_PORT = '5000'
+        WIREMOCK_URL = 'http://wiremock_service:8080'
+        FLASK_URL = 'http://python-app:5000'
     }
+
     stages {
-        stage('1. Descargar repositorio y crear reports.') {
+        stage('1. Get Code & Prepare Workspace') {
+            agent { label 'built-in' }
             steps {
-                echo 'Descargando repostorio...'
+                sh 'whoami'
+                sh 'hostname'
+                echo "Workspace: ${env.WORKSPACE}"
+                echo 'Descargando repositorio...'
                 checkout scm
                 sh 'ls -la'
                 echo 'Creando directorio de reportes...'
                 sh 'mkdir -p reports'
+                echo 'Guardando el código fuente y archivos del workspace...'
+                stash name: 'sourceAndConfig', includes: '**/*'
             }
         }
-        stage('2. Pruebas unitarias (Secuencial).') {
+
+        stage('2. Unit Tests') {
+            agent { label 'agent-ssh-jenkins-2-test-unit' }
             steps {
+                sh 'whoami'
+                sh 'hostname'
+                echo "Workspace: ${env.WORKSPACE}"
+                cleanWs()
+                unstash name: 'sourceAndConfig'
+                sh 'ls -la'
+                sh 'mkdir -p reports'
+                echo 'Instalando dependencias de Python...'
+                sh 'pip install -r requirements.txt'
                 echo 'Realizando pruebas unitarias...'
-                sh 'python3 -m pytest test/unit --junitxml=reports/TEST-unit-sequential.xml'
-                echo 'Pruebas unitarias (secuenciales) realizadas con éxito'
+                sh 'python3 -m pytest test/unit --junitxml=reports/TEST-unit.xml'
+                echo 'Pruebas unitarias realizadas.'
+                stash name: 'unitTestReports', includes: 'reports/TEST-unit.xml', allowEmpty: true
+            }
+            post {
+                always {
+                    junit 'reports/TEST-unit.xml'
+                    script { echo 'Pruebas unitarias finalizadas. Siempre se mostrará en verde.' }
+                }
             }
         }
-        stage('3. Pruebas de servicio (Secuencial con aislamiento).') {
+
+        stage('3. Rest Tests') {
+            agent { label 'agent-ssh-jenkins-2-test-rest' }
             steps {
                 script {
-                    echo 'Iniciando pruebas de servicio secuencial...'
-                    def FLASK_HOST_PORT_SEQ = ''
-                    def WIREMOCK_HOST_PORT_SEQ = ''
+                    sh 'whoami'
+                    sh 'hostname'
+                    echo "Workspace: ${env.WORKSPACE}"
+                    cleanWs()
+                    unstash name: 'sourceAndConfig'
+                    sh 'ls -la'
+                    echo 'Instalando dependencias de Python...'
+                    sh 'pip install -r requirements.txt'
+                    echo 'Iniciando entorno Docker para pruebas REST (python-app y wiremock_service)...'
+                    def FLASK_HOST_PORT_REST = ''
+                    def WIREMOCK_HOST_PORT_REST = ''
                     try {
-                        echo 'Limpiando entorno en caso de ser necesario...'
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
-
                         sh 'echo "DEBUG: Verificando directorio de mappings de WireMock en el workspace..."'
-                        sh 'ls -la ./test/wiremock/mappings/' // Muestra el contenido del directorio
+                        sh 'ls -la ./test/wiremock/mappings/'
                         sh 'echo "DEBUG: Contenido de ./test/wiremock/mappings/sqrt64.json:"'
-                        
-                        sh 'cat ./test/wiremock/mappings/sqrt64.json || echo "ERROR: sqrt64.json no encontrado o cat falló"'
-                        echo 'Construyendo entorno para pruebas python-app y wiremock (CON PUBLICACIÓN DE PUERTOS)...'
+                        sh 'cat ./test/wiremock/mappings/sqrt64.json || echo "ERROR: sqrt64.json no encontrado"'
+                        echo 'Construyendo y levantando entorno para pruebas python-app y wiremock...'
                         sh 'docker compose -f docker-compose.yml up -d --build python-app wiremock_service'
-
                         echo 'Esperando a que los servicios se inicien...'
-                        sh 'sleep 10' 
-                        sh 'docker compose -f docker-compose.yml logs python-app' 
+                        sh 'sleep 15'
+                        sh 'docker compose -f docker-compose.yml logs python-app'
                         sh 'docker compose -f docker-compose.yml exec python-app env'
                         sh 'docker compose -f docker-compose.yml logs wiremock_service'
-
-                        FLASK_HOST_PORT_SEQ = sh(script: 'docker compose -f docker-compose.yml port python-app 5000', returnStdout: true).trim().split(':')[1]
-                        WIREMOCK_HOST_PORT_SEQ = sh(script: 'docker compose -f docker-compose.yml port wiremock_service 8080', returnStdout: true).trim().split(':')[1]
-
-                        echo "DEBUG: FLASK_HOST_PORT_SEQ detectado: ${FLASK_HOST_PORT_SEQ}"
-                        echo "DEBUG: WIREMOCK_HOST_PORT_SEQ detectado: ${WIREMOCK_HOST_PORT_SEQ}"
-
-                        // Construye las URLs usando host.docker.internal
-                        def flaskUrlForTestSeq = "http://host.docker.internal:${FLASK_HOST_PORT_SEQ}"
-                        def wiremockUrlForTestSeq = "http://host.docker.internal:${WIREMOCK_HOST_PORT_SEQ}"
-
-                        echo "DEBUG: Intentando curl a python-app en ${flaskUrlForTestSeq}/calc/add/1/2"
-                        sh "curl -v --connect-timeout 10 ${flaskUrlForTestSeq}/calc/add/1/2 || echo 'Curl a python-app falló'"
-
-                        echo "DEBUG: Intentando curl a wiremock en ${wiremockUrlForTestSeq}/__admin/mappings"
-                        sh "curl -v --connect-timeout 10 ${wiremockUrlForTestSeq}/__admin/mappings || echo 'Curl a wiremock falló'"
-
-                        echo 'Creando directorio para reportes en el workspace...'
+                        FLASK_HOST_PORT_REST = sh(script: 'docker compose -f docker-compose.yml port python-app 5000', returnStdout: true).trim().split(':')[1]
+                        WIREMOCK_HOST_PORT_REST = sh(script: 'docker compose -f docker-compose.yml port wiremock_service 8080', returnStdout: true).trim().split(':')[1]
+                        echo "DEBUG: FLASK_HOST_PORT_REST detectado: ${FLASK_HOST_PORT_REST}"
+                        echo "DEBUG: WIREMOCK_HOST_PORT_REST detectado: ${WIREMOCK_HOST_PORT_REST}"
+                        def flaskUrlForTestRest = "http://host.docker.internal:${FLASK_HOST_PORT_REST}"
+                        def wiremockUrlForTestRest = "http://host.docker.internal:${WIREMOCK_HOST_PORT_REST}"
+                        echo "DEBUG: Intentando curl a python-app en ${flaskUrlForTestRest}/calc/add/1/2"
+                        sh "curl -v --connect-timeout 15 ${flaskUrlForTestRest}/calc/add/1/2 || echo 'Curl a python-app falló'"
+                        echo "DEBUG: Intentando curl a wiremock en ${wiremockUrlForTestRest}/__admin/mappings"
+                        sh "curl -v --connect-timeout 15 ${wiremockUrlForTestRest}/__admin/mappings || echo 'Curl a wiremock falló'"
                         sh 'mkdir -p reports'
-                        
-                        echo 'Ejecutando pruebas de servicio (Secuencial)...'
+                        echo 'Ejecutando pruebas de servicio (REST)...'
                         sh """
-                            FLASK_TEST_URL="${flaskUrlForTestSeq}" \
-                            WIREMOCK_TEST_URL="${wiremockUrlForTestSeq}" \
-                            python3 -m pytest test/rest --junitxml=reports/TEST-rest-sequential.xml
+                            FLASK_TEST_URL="${flaskUrlForTestRest}" \
+                            WIREMOCK_TEST_URL="${wiremockUrlForTestRest}" \
+                            python3 -m pytest test/rest --junitxml=reports/TEST-rest.xml
                         """
-                        
-                        echo 'Pruebas de servicio secuencial ejecutadas con éxito.'
+                        echo 'Pruebas de servicio ejecutadas.'
                     } finally {
-                        echo 'Deteniendo y eliminando contenedores de prueba (service secuencial) para un workspace limpio...'
+                        echo 'Deteniendo y eliminando contenedores de prueba (REST) para un workspace limpio...'
+                        sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
+                    }
+                }
+                echo 'Guardando reportes de pruebas REST...'
+                stash name: 'restTestReports', includes: 'reports/TEST-rest.xml', allowEmpty: true
+            }
+            post {
+                always {
+                    junit 'reports/TEST-rest.xml'
+                    script { echo 'Pruebas de integración (REST) finalizadas. Siempre se mostrará en verde.' }
+                }
+            }
+        }
+
+        stage('4. Static Code Analysis (Flake8)') {
+            agent { label 'agent-ssh-jenkins-1-general' }
+            steps {
+                script {
+                    echo 'Preparando workspace para análisis estático...'
+                    cleanWs()
+                    unstash name: 'sourceAndConfig'
+                    sh 'ls -la'
+                    echo 'Instalando dependencias de Python (incluyendo flake8)...'
+                    sh 'pip install -r requirements.txt'
+
+                    echo 'Ejecutando pruebas de análisis de código estático (flake8)...'
+                    // Redirigir salida a archivo para que Warnings-NG la lea
+                    // `|| true` para que el comando no falle si flake8 encuentra hallazgos (exit code != 0)
+                    sh 'flake8 --format=pylint --exit-zero app > reports/flake8.out || true'
+
+                    // Publicar resultados con Warnings Next Generation Plugin y definir baremos
+                    recordIssues tools: [
+                        flake8(pattern: 'reports/flake8.out')
+                    ],
+                    qualityGates: [
+                        // Si se encuentran 10 o más hallazgos, debe marcarse la etapa y el build como unhealthy (rojo)
+                        [threshold: 10, type: 'TOTAL', result: 'FAILURE', name: 'Flake8 Unhealthy Threshold'],
+                        // Si se encuentran 8 o más hallazgos, debe marcarse la etapa y el build como unstable (amarillo/naranja)
+                        [threshold: 8, type: 'TOTAL', result: 'UNSTABLE', name: 'Flake8 Unstable Threshold']
+                    ]
+                }
+            }
+            post {
+                always {
+                    // Archivar el archivo de salida de flake8 para referencia
+                    archiveArtifacts artifacts: 'reports/flake8.out', allowEmptyArchive: true
+                    stash name: 'flake8Reports', includes: 'reports/flake8.out', allowEmpty: true
+                    script { echo 'Análisis de Flake8 completado. El pipeline continuará la ejecución.' }
+                }
+            }
+        }
+
+        stage('5. Security Test (Bandit)') {
+            agent { label 'agent-ssh-jenkins-1-general' }
+            steps {
+                script {
+                    echo 'Preparando workspace para pruebas de seguridad...'
+                    cleanWs()
+                    unstash name: 'sourceAndConfig'
+                    sh 'ls -la'
+                    echo 'Instalando dependencias de Python (incluyendo bandit)...'
+                    sh 'pip install -r requirements.txt'
+
+                    echo 'Ejecutando pruebas de seguridad (Bandit)...'
+                    // Redirigir salida a archivo para que Warnings-NG la lea
+                    // Especificar --format=custom y --msg-template como en la diapositiva para mejor parsing
+                    sh 'bandit -r app -f custom -o reports/bandit.out --msg-template "{abspath}:{line}: {severity}: {test_id}: {msg}" || true'
+
+                    // Publicar resultados con Warnings Next Generation Plugin y definir baremos
+                    recordIssues tools: [
+                        bandit(pattern: 'reports/bandit.out') // El parser para bandit se infiere del formato de salida
+                    ],
+                    qualityGates: [
+                        // Si se encuentran 4 o más hallazgos, debe marcarse la etapa y el build como unhealthy (rojo)
+                        [threshold: 4, type: 'TOTAL', result: 'FAILURE', name: 'Bandit Unhealthy Threshold'],
+                        // Si se encuentran 2 o más hallazgos, debe marcarse la etapa y el build como unstable (amarillo/naranja)
+                        [threshold: 2, type: 'TOTAL', result: 'UNSTABLE', name: 'Bandit Unstable Threshold']
+                    ]
+                }
+            }
+            post {
+                always {
+                    // Archivar el archivo de salida de bandit para referencia
+                    archiveArtifacts artifacts: 'reports/bandit.out', allowEmptyArchive: true
+                    stash name: 'banditReports', includes: 'reports/bandit.out', allowEmpty: true
+                    script { echo 'Análisis de Bandit completado. El pipeline continuará la ejecución.' }
+                }
+            }
+        }
+
+        stage('6. Performance Tests (JMeter)') {
+            agent { label 'agent-ssh-jenkins-1-general' }
+            steps {
+                script {
+                    echo 'Preparando workspace para pruebas de rendimiento...'
+                    cleanWs()
+                    unstash name: 'sourceAndConfig'
+                    sh 'ls -la'
+
+                    echo 'Iniciando entorno Docker para pruebas de rendimiento (python-app, wiremock_service, jmeter)...'
+                    try {
+                        sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
+                        sh 'docker compose -f docker-compose.yml up -d --build python-app wiremock_service jmeter'
+                        sh 'sleep 20'
+                        sh 'docker compose -f docker-compose.yml logs python-app'
+                        sh 'docker compose -f docker-compose.yml logs jmeter'
+                        
+                        echo 'Ejecutando pruebas de carga con JMeter desde el contenedor jmeter...'
+                        // jmeter -n -t test\jmeter\flask.jmx –f –l flask.jtl
+                        // La opción -f es para forzar la sobrescritura del JTL, pero no siempre es necesaria
+                        // La opción -e -o para generar el informe HTML
+                        sh """
+                        docker compose exec jmeter /bin/bash -c "jmeter -n -t /jmeter/apache-jmeter-5.6.3/bin/test_plans/flask.jmx -l /jmeter/apache-jmeter-5.6.3/bin/results/jmeter_results.jtl -e -o /jmeter/apache-jmeter-5.6.3/bin/results/html_report"
+                        """
+
+                        echo 'Guardando reportes de rendimiento JMeter...'
+                        performanceReport errorUnstableThreshold: 0, failureThreshold: 0, showTrendForLastBuilds: 5,
+                            sourceDataFiles: 'test/jmeter/results/jmeter_results.jtl'
+                    } finally {
+                        echo 'Deteniendo y eliminando contenedores de prueba (Performance) para un workspace limpio...'
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
                     }
                 }
             }
-        }
-        stage('4. Pruebas en paralelo (Con aislamiento)') {
-            parallel {
-                stage('4.1 Pruebas unitarias (Paralelo)') {
-                    steps {
-                        echo 'Creando directorio para reportes en el workspace...'
-                        sh 'mkdir -p reports'
-
-                        echo 'Realizando pruebas unitarias en paralelo...'
-                        sh 'python3 -m pytest test/unit --junitxml=reports/TEST-unit-parallel.xml' 
-                        
-                        echo 'Pruebas unitarias realizadas con exito...'
-                    }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'test/jmeter/results/html_report/**/*', fingerprint: true, allowEmptyArchive: true
+                    stash name: 'jmeterReports', includes: 'test/jmeter/results/jmeter_results.jtl,test/jmeter/results/html_report/**/*', allowEmpty: true
+                    script { echo 'Pruebas de carga JMeter finalizadas.' }
                 }
-                stage('4.2 Pruebas de servicio (Paralelo con aislamiento)') {
-                    steps {
-                        script {
-                            echo 'Iniciando pruebas de servicio en paralelo'
-                            def FLASK_HOST_PORT_PAR = ''
-                            def WIREMOCK_HOST_PORT_PAR = ''
-                            try {
-                                echo 'Limpiando entorno en caso de ser necesario...'
-                                sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
+            }
+        }
 
-                                echo 'Construyendo entorno para pruebas python-app y wiremock (CON PUBLICACIÓN DE PUERTOS)...'
-                                sh 'docker compose -f docker-compose.yml up -d --build python-app wiremock_service'
+        stage('7. Code Coverage') {
+            agent { label 'agent-ssh-jenkins-2-test-unit' }
+            steps {
+                script {
+                    echo 'Preparando workspace para pruebas de cobertura...'
+                    cleanWs()
+                    unstash name: 'sourceAndConfig'
+                    sh 'ls -la'
 
-                                echo 'Esperando a que los servicios se inicien...'
-                                sh 'sleep 10' 
-                                sh 'docker compose -f docker-compose.yml logs python-app'
-                                sh 'docker compose -f docker-compose.yml exec python-app env'
-                                sh 'docker compose -f docker-compose.yml logs wiremock_service'
+                    echo 'Instalando dependencias de Python (incluyendo coverage)...'
+                    sh 'pip install -r requirements.txt'
 
-                                FLASK_HOST_PORT_PAR = sh(script: 'docker compose -f docker-compose.yml port python-app 5000', returnStdout: true).trim().split(':')[1]
-                                WIREMOCK_HOST_PORT_PAR = sh(script: 'docker compose -f docker-compose.yml port wiremock_service 8080', returnStdout: true).trim().split(':')[1]
-                                
-                                echo "DEBUG: FLASK_HOST_PORT_PAR detectado: ${FLASK_HOST_PORT_PAR}"
-                                echo "DEBUG: WIREMOCK_HOST_PORT_PAR detectado: ${WIREMOCK_HOST_PORT_PAR}"
+                    echo 'Ejecutando pruebas unitarias con cobertura para recolectar datos...'
+                    sh 'coverage run --source=app --omit=app/__init__.py,app/api.py -m pytest test/unit'
 
-                                // Construye las URLs usando host.docker.internal
-                                def flaskUrlForTestPar = "http://host.docker.internal:${FLASK_HOST_PORT_PAR}"
-                                def wiremockUrlForTestPar = "http://host.docker.internal:${WIREMOCK_HOST_PORT_PAR}"
+                    echo 'Generando informe de cobertura en XML y HTML...'
+                    sh 'coverage xml -o reports/coverage.xml'
+                    sh 'coverage html -d reports/coverage_html_report'
 
-                                echo 'Creando directorio para reportes en el workspace...'
-                                sh 'mkdir -p reports'
-                                
-                                echo 'Ejecutando pruebas de servicio (Parallel)...'
-                                // Añadí los echos de debug con curl aquí también por consistencia
-                                echo "DEBUG: (Paralelo) Intentando curl a python-app en ${flaskUrlForTestPar}/calc/add/1/2"
-                                sh "curl -v --connect-timeout 10 ${flaskUrlForTestPar}/calc/add/1/2 || echo '(Paralelo) Curl a python-app falló'"
-
-                                echo "DEBUG: (Paralelo) Intentando curl a wiremock en ${wiremockUrlForTestPar}/__admin/mappings"
-                                sh "curl -v --connect-timeout 10 ${wiremockUrlForTestPar}/__admin/mappings || echo '(Paralelo) Curl a wiremock falló'"
-                                
-                                sh """
-                                    FLASK_TEST_URL="${flaskUrlForTestPar}" \
-                                    WIREMOCK_TEST_URL="${wiremockUrlForTestPar}" \
-                                    python3 -m pytest test/rest --junitxml=reports/TEST-rest-parallel.xml
-                                """
-                                echo 'Pruebas de servicio en paralelo ejecutadas con éxito.'
-                            } finally {
-                                echo 'Deteniendo y eliminando contenedores de prueba (service parallel) para un workspace limpio...'
-                                sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
-                            }
-                        }
-                    }
+                    // Publicar resultados con Cobertura plugin y definir baremos
+                    recordCoverage(
+                        adapters: [
+                            coberturaAdapter('reports/coverage.xml')
+                        ],
+                        qualityGates: [
+                            // Si la cobertura por líneas se encuentra entre 85 y 95, se marcará como unstable. Por encima será verde y, por debajo, rojo.
+                            [threshold: 85, type: 'LINE', result: 'FAILURE', name: 'Line Coverage Failure'],
+                            [threshold: 95, type: 'LINE', result: 'UNSTABLE', name: 'Line Coverage Unstable'], // Si es > 95, es estable (verde)
+                            // Si la cobertura por ramas/condiciones se encuentra entre 80 y 90, se marcará como unstable. Por encima será verde y, por debajo, rojo.
+                            [threshold: 80, type: 'BRANCH', result: 'FAILURE', name: 'Branch Coverage Failure'],
+                            [threshold: 90, type: 'BRANCH', result: 'UNSTABLE', name: 'Branch Coverage Unstable'] // Si es > 90, es estable (verde)
+                        ]
+                    )
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/coverage.xml, reports/coverage_html_report/**/*', fingerprint: true, allowEmptyArchive: true
+                    stash name: 'coverageReports', includes: 'reports/coverage.xml,reports/coverage_html_report/**/*', allowEmpty: true
+                    script { echo 'Pruebas de cobertura finalizadas.' }
                 }
             }
         }
     }
+
     post {
         always {
-            echo 'Fin del Pipeline'
-            archiveArtifacts artifacts: 'reports/*.xml', allowEmptyArchive: true
+            node('built-in') {
+                echo 'Fin del Pipeline. Recopilando todos los reportes...'
+                sh 'mkdir -p reports'
+
+                unstash name: 'unitTestReports',   quiet: true
+                unstash name: 'restTestReports',   quiet: true
+                unstash name: 'flake8Reports',     quiet: true
+                unstash name: 'banditReports',     quiet: true
+                unstash name: 'jmeterReports',     quiet: true
+                unstash name: 'coverageReports',   quiet: true
+
+                junit 'reports/TEST-unit.xml'
+                junit 'reports/TEST-rest.xml'
+
+                archiveArtifacts artifacts: 'reports/*.xml,reports/*.csv,reports/**/*.out,reports/**/*html*', allowEmptyArchive: true
+
+                cleanWs()
+            }
         }
         failure {
-            echo 'El pipeline falló.'
+            node('built-in') {
+                echo 'El pipeline falló.'
+            }
         }
     }
 }

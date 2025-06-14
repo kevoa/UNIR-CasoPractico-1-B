@@ -53,7 +53,7 @@ services:
     expose:
       - 22
     environment:
-      - JENKINS_AGENT_SSH_PUBKEY=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKIw5RZOdVuaorUL7zdJB6SaZe3s5fkRJaVjq6NODJje
+      - JENKINS_AGENT_SSH_PUBKEY=ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCrQ1dGcVKe+jkTCfaDue0Vk3R9eoV1RYKLPvx41DsHFYtBPlgXtF8rRvxzyOneHP8J2Itrswag0tB64Njco9oYdMkrBxDpkEh52/gqoYimTZY4W4lLqbG2hYVFtD75xrcUCk/LTtoDQECT6scTRVVj5TKvTmKLtm81FjhoYtmcLtZfcyvuVae3+ZJ7j08s29qGaMwoOHrGJ7HlLgL+fWQzcS7Lok0vAAK4rQi42Y4/yRks6WvpVPUwMMnR1EkLk3REMsB//cpBj0RTR5/PYRSzi8/wKXKE4tpwhfKJ1wxmh8jD/62kWURp9t1epEGn9Q9SX6+Hn1SSROo1dZ+ndGROuJkcQw3peuYxd1NvYGTqWzyt/ZNt4mgsJMuS2sKaRkk6wqMB+BnCLWRUhZOwC99WG2A7MsHh+5F7yRNDKuEZWjtVuw/zOkyIwS6Lh/pHn8A9lMnJ3N59NRbAR5ehTC/asJbLOleiyhXRr4L9HU5vR2pGyVgBXGRqqzUde8gmgKNBbBo9/5q39gRG7ttk2zAiu8GUQgMLo6Ad4YdIqYkbhMY0jl4iabo+V0YvWBQgA8nbZjLql0OEwZtQCoOcF4x93jPRN5YxemtaxCaxuPx2hlEsoFjQuiKe/EUfYTh2DYyvdPZm0GFEGiQGGxq3IeCioqbpnafXkV2P55+vk+DrHw== kevin-orozco@TDS157
     networks:
       - devops_network
 
@@ -68,7 +68,7 @@ services:
     expose:
       - 22
     environment:
-      - JENKINS_AGENT_SSH_PUBKEY=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKIw5RZOdVuaorUL7zdJB6SaZe3s5fkRJaVjq6NODJje
+      - JENKINS_AGENT_SSH_PUBKEY=ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCrQ1dGcVKe+jkTCfaDue0Vk3R9eoV1RYKLPvx41DsHFYtBPlgXtF8rRvxzyOneHP8J2Itrswag0tB64Njco9oYdMkrBxDpkEh52/gqoYimTZY4W4lLqbG2hYVFtD75xrcUCk/LTtoDQECT6scTRVVj5TKvTmKLtm81FjhoYtmcLtZfcyvuVae3+ZJ7j08s29qGaMwoOHrGJ7HlLgL+fWQzcS7Lok0vAAK4rQi42Y4/yRks6WvpVPUwMMnR1EkLk3REMsB//cpBj0RTR5/PYRSzi8/wKXKE4tpwhfKJ1wxmh8jD/62kWURp9t1epEGn9Q9SX6+Hn1SSROo1dZ+ndGROuJkcQw3peuYxd1NvYGTqWzyt/ZNt4mgsJMuS2sKaRkk6wqMB+BnCLWRUhZOwC99WG2A7MsHh+5F7yRNDKuEZWjtVuw/zOkyIwS6Lh/pHn8A9lMnJ3N59NRbAR5ehTC/asJbLOleiyhXRr4L9HU5vR2pGyVgBXGRqqzUde8gmgKNBbBo9/5q39gRG7ttk2zAiu8GUQgMLo6Ad4YdIqYkbhMY0jl4iabo+V0YvWBQgA8nbZjLql0OEwZtQCoOcF4x93jPRN5YxemtaxCaxuPx2hlEsoFjQuiKe/EUfYTh2DYyvdPZm0GFEGiQGGxq3IeCioqbpnafXkV2P55+vk+DrHw== kevin-orozco@TDS157
     networks:
       - devops_network
 
@@ -83,9 +83,22 @@ services:
     expose:
       - 22
     environment:
-      - JENKINS_AGENT_SSH_PUBKEY=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKIw5RZOdVuaorUL7zdJB6SaZe3s5fkRJaVjq6NODJje
+      - JENKINS_AGENT_SSH_PUBKEY=ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCrQ1dGcVKe+jkTCfaDue0Vk3R9eoV1RYKLPvx41DsHFYtBPlgXtF8rRvxzyOneHP8J2Itrswag0tB64Njco9oYdMkrBxDpkEh52/gqoYimTZY4W4lLqbG2hYVFtD75xrcUCk/LTtoDQECT6scTRVVj5TKvTmKLtm81FjhoYtmcLtZfcyvuVae3+ZJ7j08s29qGaMwoOHrGJ7HlLgL+fWQzcS7Lok0vAAK4rQi42Y4/yRks6WvpVPUwMMnR1EkLk3REMsB//cpBj0RTR5/PYRSzi8/wKXKE4tpwhfKJ1wxmh8jD/62kWURp9t1epEGn9Q9SX6+Hn1SSROo1dZ+ndGROuJkcQw3peuYxd1NvYGTqWzyt/ZNt4mgsJMuS2sKaRkk6wqMB+BnCLWRUhZOwC99WG2A7MsHh+5F7yRNDKuEZWjtVuw/zOkyIwS6Lh/pHn8A9lMnJ3N59NRbAR5ehTC/asJbLOleiyhXRr4L9HU5vR2pGyVgBXGRqqzUde8gmgKNBbBo9/5q39gRG7ttk2zAiu8GUQgMLo6Ad4YdIqYkbhMY0jl4iabo+V0YvWBQgA8nbZjLql0OEwZtQCoOcF4x93jPRN5YxemtaxCaxuPx2hlEsoFjQuiKe/EUfYTh2DYyvdPZm0GFEGiQGGxq3IeCioqbpnafXkV2P55+vk+DrHw== kevin-orozco@TDS157
     networks:
       - devops_network
+
+  # Nuevo servicio para JMeter
+  jmeter:
+    image: justb4/jmeter:5.6.3 
+    container_name: jmeter
+    volumes:
+      - ./test/jmeter:/jmeter/apache-jmeter-5.6.3/bin/test_plans # Montar tu carpeta de test plans
+      - ./test/jmeter/results:/jmeter/apache-jmeter-5.6.3/bin/results # Para almacenar resultados
+    networks:
+      - devops_network
+    depends_on:
+      - python-app # JMeter necesita que python-app esté levantado
+
 
 networks:
   devops_network:
