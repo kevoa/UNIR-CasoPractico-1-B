@@ -184,13 +184,14 @@ pipeline {
                     echo 'Ejecutando pruebas de análisis de código estático (flake8)...'
                     sh 'flake8 --format=pylint --exit-zero app > reports/flake8.out || true'
 
-                    // SOLUCIÓN FINAL para Warnings plugin: usar flake8() y bandit() directamente
-                    // Si el plugin 'Warnings' (antes 'Warnings Next Generation') está correctamente instalado
-                    // y sus métodos DSL aprobados (si Jenkins los pide en Script Approval),
-                    // esta sintaxis es la que DEBE funcionar.
+                    // AJUSTE CRÍTICO: Usar la sintaxis explícita '$class' para los parsers.
+                    // Esto le dice a Jenkins exactamente qué objeto Java del plugin debe instanciar.
                     recordIssues(
                         tools: [
-                            flake8(pattern: 'reports/flake8.out')
+                            [
+                                $class: 'io.jenkins.plugins.analysis.warnings.Flake8', // Nombre completo de la clase del parser Flake8
+                                pattern: 'reports/flake8.out'
+                            ]
                         ],
                         qualityGates: [
                             [threshold: 10, type: 'TOTAL', result: 'FAILURE', name: 'Flake8 Unhealthy Threshold'],
@@ -225,10 +226,13 @@ pipeline {
                     echo 'Ejecutando pruebas de seguridad (Bandit)...'
                     sh 'bandit -r app -f custom -o reports/bandit.out --msg-template "{abspath}:{line}: {severity}: {test_id}: {msg}" || true'
 
-                    // SOLUCIÓN FINAL para Warnings plugin: usar flake8() y bandit() directamente
+                    // AJUSTE CRÍTICO: Usar la sintaxis explícita '$class' para el parser Bandit.
                     recordIssues(
                         tools: [
-                            bandit(pattern: 'reports/bandit.out')
+                            [
+                                $class: 'io.jenkins.plugins.analysis.warnings.Bandit', // Nombre completo de la clase del parser Bandit
+                                pattern: 'reports/bandit.out'
+                            ]
                         ],
                         qualityGates: [
                             [threshold: 4, type: 'TOTAL', result: 'FAILURE', name: 'Bandit Unhealthy Threshold'],
@@ -311,11 +315,13 @@ pipeline {
                     sh 'coverage xml -o reports/coverage.xml'
                     sh 'coverage html -d reports/coverage_html_report'
 
-                    // 'recordCoverage' publica los resultados de cobertura usando el plugin Cobertura.
-                    // 'qualityGates' define los baremos de aceptación para el build basándose en los requisitos.
+                    // AJUSTE CRÍTICO: Usar la sintaxis explícita '$class' para el adaptador Cobertura.
                     recordCoverage(
                         adapters: [
-                            coberturaAdapter(pattern: 'reports/coverage.xml')
+                            [
+                                $class: 'io.jenkins.plugins.coverage.cobertura.CoberturaAdapter', // Nombre completo de la clase del adaptador Cobertura
+                                pattern: 'reports/coverage.xml'
+                            ]
                         ],
                         qualityGates: [
                             [threshold: 85, type: 'LINE', result: 'FAILURE', name: 'Line Coverage Failure'],
