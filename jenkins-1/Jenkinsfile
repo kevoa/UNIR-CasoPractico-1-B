@@ -305,15 +305,23 @@ pipeline {
                     // Asegúrate de que el plugin "Code Coverage API Plugin" y "Cobertura Plugin" (si usas Cobertura)
                     // estén instalados y actualizados.
                     recordCoverage(
+                        // 'tools' es el nombre correcto del parámetro para los adaptadores de reportes.
                         tools: [
-                            [ $class: 'io.jenkins.plugins.coverage.metrics.adapter.CoberturaReportAdapter', pattern: 'reports/coverage.xml' ]
+                            // El $class: 'io.jenkins.plugins.coverage.metrics.adapter.CoberturaReportAdapter' es la clase estándar para el plugin moderno.
+                            // Si este da ClassNotFoundException, significa que tienes una versión más antigua del plugin
+                            // y tendrías que usar 'hudson.plugins.cov.CoberturaReportAdapter'.
+                            [ $class: 'io.jenkins.plugins.coverage.metrics.adapter.CoberturaReportAdapter', pattern: 'reports/coverage.xml' ] 
                         ],
                         qualityGates: [
-                            [value: 85, criterion: 'LINE', threshold: 'CRITICAL', name: 'Line Coverage Critical'],
-                            [value: 95, criterion: 'LINE', threshold: 'UNSTABLE', name: 'Line Coverage Unstable'],
-                            [value: 80, criterion: 'BRANCH', threshold: 'CRITICAL', name: 'Branch Coverage Critical'],
-                            [value: 90, criterion: 'BRANCH', threshold: 'UNSTABLE', name: 'Branch Coverage Unstable']
+                            // Umbral para 'FAILURE' (critical: true)
+                            [metric: 'LINE', integerThreshold: 85, criticality: 'CRITICAL', name: 'Line Coverage Failure'], 
+                            // Umbral para 'UNSTABLE' (unstable: true)
+                            [metric: 'LINE', integerThreshold: 95, criticality: 'UNSTABLE', name: 'Line Coverage Unstable'], 
+                            
+                            [metric: 'BRANCH', integerThreshold: 80, criticality: 'CRITICAL', name: 'Branch Coverage Failure'],
+                            [metric: 'BRANCH', integerThreshold: 90, criticality: 'UNSTABLE', name: 'Branch Coverage Unstable']
                         ]
+                        // También puedes añadir 'checksAnnotationScope', 'name', 'sourceCodeEncoding', etc. si los necesitas.
                     )
                 }
             }
