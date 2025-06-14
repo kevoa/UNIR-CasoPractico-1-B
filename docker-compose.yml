@@ -98,8 +98,7 @@ services:
       - devops_network
     depends_on:
       - python-app 
-    command: ["-n", "-t", "/jmeter/apache-jmeter-5.4/bin/test_plans/flask.jmx", "-l", "/jmeter/apache-jmeter-5.4/bin/results/jmeter_results.jtl", "-e", "-o", "/jmeter/apache-jmeter-5.4/bin/results/html_report"]
-
+    command: ["-n", "-t", "/opt/jmeter/bin/test_plans/flask.jmx", "-l", "/opt/jmeter/bin/results/jmeter_results.jtl", "-e", "-o", "/opt/jmeter/bin/results/html_report"]
 
 networks:
   devops_network:
