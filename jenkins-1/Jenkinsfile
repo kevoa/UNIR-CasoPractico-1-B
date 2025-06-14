@@ -309,16 +309,17 @@ pipeline {
                     // estén instalados y actualizados.
                     recordCoverage(
                         tools: [
-                            // Usamos 'parser' con el nombre de la herramienta (COBERTURA), no '$class' con la ruta completa de la clase Java.
                             [ parser: 'COBERTURA', pattern: 'reports/coverage.xml' ] 
                         ],
                         qualityGates: [
-                            // 'threshold' es el valor numérico, 'metric' el tipo de métrica, y 'critical'/'unstable' son booleanos.
-                            // Añadimos 'baseline' para mayor consistencia con el ejemplo que encontraste.
-                            [threshold: 85.0, metric: 'LINE', baseline: 'PROJECT', critical: true, name: 'Line Coverage Failure'], // 85.0 para Double
-                            [threshold: 95.0, metric: 'LINE', baseline: 'PROJECT', unstable: true, name: 'Line Coverage Unstable'], // 95.0 para Double
-                            [threshold: 80.0, metric: 'BRANCH', baseline: 'PROJECT', critical: true, name: 'Branch Coverage Failure'],
-                            [threshold: 90.0, metric: 'BRANCH', baseline: 'PROJECT', unstable: true, name: 'Branch Coverage Unstable']
+                            // Puerta de Línea - Fallo (Threshold 85%)
+                            [threshold: 85.0, metric: 'LINE', baseline: 'PROJECT', criticality: 'CRITICAL', name: 'Line Coverage Failure'], 
+                            // Puerta de Línea - Inestable (Threshold 95%)
+                            [threshold: 95.0, metric: 'LINE', baseline: 'PROJECT', criticality: 'UNSTABLE', name: 'Line Coverage Unstable'], 
+                            // Puerta de Rama - Fallo (Threshold 80%)
+                            [threshold: 80.0, metric: 'BRANCH', baseline: 'PROJECT', criticality: 'CRITICAL', name: 'Branch Coverage Failure'],
+                            // Puerta de Rama - Inestable (Threshold 90%)
+                            [threshold: 90.0, metric: 'BRANCH', baseline: 'PROJECT', criticality: 'UNSTABLE', name: 'Branch Coverage Unstable']
                         ]
                     )
                 }
