@@ -309,18 +309,20 @@ pipeline {
                     // estén instalados y actualizados.
                     recordCoverage(
                         tools: [
+                            // Usamos 'parser' con el nombre de la herramienta (COBERTURA), no '$class'.
                             [ parser: 'COBERTURA', pattern: 'reports/coverage.xml' ] 
                         ],
                         qualityGates: [
-                            // Para "Mark the step as failed" (THRESHOLD CRÍTICO)
-                            [threshold: 85.0, metric: 'LINE', baseline: 'PROJECT', markBuildFailed: true], // Añadir markBuildFailed: true
-                            // Para "Mark the step as unstable" (THRESHOLD INESTABLE)
-                            [threshold: 95.0, metric: 'LINE', baseline: 'PROJECT', markBuildUnstable: true], // Añadir markBuildUnstable: true
-                            
-                            [threshold: 80.0, metric: 'BRANCH', baseline: 'PROJECT', markBuildFailed: true],
-                            [threshold: 90.0, metric: 'BRANCH', baseline: 'PROJECT', markBuildUnstable: true]
+                            // Puerta de Línea - Fallo (Threshold 85%)
+                            [integerThreshold: 85, metric: 'LINE', baseline: 'PROJECT', criticality: 'FAILURE'], 
+                            // Puerta de Línea - Inestable (Threshold 95%)
+                            [integerThreshold: 95, metric: 'LINE', baseline: 'PROJECT', criticality: 'UNSTABLE'], 
+                            // Puerta de Rama - Fallo (Threshold 80%)
+                            [integerThreshold: 80, metric: 'BRANCH', baseline: 'PROJECT', criticality: 'FAILURE'],
+                            // Puerta de Rama - Inestable (Threshold 90%)
+                            [integerThreshold: 90, metric: 'BRANCH', baseline: 'PROJECT', criticality: 'UNSTABLE']
                         ]
-                        // Eliminamos el parámetro 'name' ya que el warning indica que no es reconocido.
+                        // Ya no incluimos 'name' porque los warnings anteriores indicaban que no es reconocido por tu versión del plugin aquí.
                     )
                 }
             }
