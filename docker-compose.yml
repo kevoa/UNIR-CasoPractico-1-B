@@ -89,7 +89,7 @@ services:
 
   # Nuevo servicio para JMeter
   jmeter:
-    image: justb4/jmeter:5.6.3 
+    image: justb4/jmeter:5.4 
     container_name: jmeter
     volumes:
       - ./test/jmeter:/jmeter/apache-jmeter-5.6.3/bin/test_plans # Montar tu carpeta de test plans
