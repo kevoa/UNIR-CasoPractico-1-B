@@ -92,13 +92,13 @@ services:
     image: justb4/jmeter:5.4 
     container_name: jmeter
     volumes:
-      - ./test/jmeter:/jmeter/apache-jmeter-5.6.3/bin/test_plans # Montar tu carpeta de test plans
-      - ./test/jmeter/results:/jmeter/apache-jmeter-5.6.3/bin/results # Para almacenar resultados
+      - ./test/jmeter/test_plans:/jmeter/apache-jmeter-5.4/bin/test_plans 
+      - ./test/jmeter/results:/jmeter/apache-jmeter-5.4/bin/results 
     networks:
       - devops_network
     depends_on:
-      - python-app # JMeter necesita que python-app esté levantado
-    command: ["-n"]
+      - python-app 
+    command: ["-n", "-t", "/jmeter/apache-jmeter-5.4/bin/test_plans/flask.jmx", "-l", "/jmeter/apache-jmeter-5.4/bin/results/jmeter_results.jtl", "-e", "-o", "/jmeter/apache-jmeter-5.4/bin/results/html_report"]
 
 
 networks:
