@@ -257,24 +257,22 @@ pipeline {
                     unstash name: 'sourceAndConfig'
                     sh 'ls -la'
 
-                    sh 'mkdir -p ./test/jmeter/results/html_report'
+                    sh 'mkdir -p ./test/jmeter/results/html_report' // Esto creará la estructura de carpetas necesaria en el AGENTE
 
                     echo 'Iniciando entorno Docker para pruebas de rendimiento (python-app, wiremock_service, jmeter)...'
                     try {
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
                         sh 'docker compose -f docker-compose.yml up -d --build python-app wiremock_service jmeter'
-                        sh 'sleep 20'
-                        sh 'docker compose -f docker-compose.yml logs python-app'
-                        sh 'docker compose -f docker-compose.yml logs jmeter'
+                        
+                        // Aumenta este sleep. El test JMeter debe tener tiempo suficiente para EJECUTARSE COMPLETO.
+                        // Si tu test dura 30 segundos, un sleep de 20 es demasiado corto.
+                        // Empieza con un valor generoso (ej. 60 o 90 segundos) y ajústalo si es necesario.
+                        sh 'sleep 60' // Ajusta esto según la duración de tu test JMeter
 
-                        echo 'Ejecutando pruebas de carga con JMeter desde el contenedor jmeter...'
-                        sh """
-                        docker compose exec jmeter /bin/bash -c "jmeter -n -t /jmeter/apache-jmeter-5.6.3/bin/test_plans/flask.jmx -l /jmeter/apache-jmeter-5.6.3/bin/results/jmeter_results.jtl -e -o /jmeter/apache-jmeter-5.6.3/bin/results/html_report"
-                        """
+                        // ¡¡¡LA LÍNEA 'docker compose exec' HA SIDO ELIMINADA DE AQUÍ!!!
 
                         echo 'Guardando reportes de rendimiento JMeter...'
                         // Asegúrate de que el plugin Performance de Jenkins esté instalado para usar 'performanceReport'
-                        // Si no lo está, esta línea causará un error.
                         performanceReport errorUnstableThreshold: 0, failureThreshold: 0, showTrendForLastBuilds: 5,
                             sourceDataFiles: 'test/jmeter/results/jmeter_results.jtl'
                     } finally {
@@ -291,7 +289,7 @@ pipeline {
                 }
             }
         }
-
+        
         // Etapa 7: Pruebas de Cobertura de Código
         stage('7. Code Coverage') {
             agent {
