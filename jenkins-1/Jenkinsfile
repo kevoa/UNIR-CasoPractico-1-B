@@ -257,6 +257,8 @@ pipeline {
                     unstash name: 'sourceAndConfig'
                     sh 'ls -la'
 
+                    sh 'mkdir -p ./test/jmeter/results/html_report'
+
                     echo 'Iniciando entorno Docker para pruebas de rendimiento (python-app, wiremock_service, jmeter)...'
                     try {
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
