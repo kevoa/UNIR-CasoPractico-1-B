@@ -264,17 +264,14 @@ pipeline {
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
                         sh 'docker compose -f docker-compose.yml up -d --build python-app wiremock_service jmeter'
                         
-                        // Aumenta este sleep. El test JMeter debe tener tiempo suficiente para EJECUTARSE COMPLETO.
-                        // Si tu test dura 30 segundos, un sleep de 20 es demasiado corto.
-                        // Empieza con un valor generoso (ej. 60 o 90 segundos) y ajústalo si es necesario.
-                        sh 'sleep 60' // Ajusta esto según la duración de tu test JMeter
-
-                        // ¡¡¡LA LÍNEA 'docker compose exec' HA SIDO ELIMINADA DE AQUÍ!!!
+                        sh 'sleep 10' // Ajusta esto según la duración de tu test JMeter
 
                         echo 'Guardando reportes de rendimiento JMeter...'
-                        // Asegúrate de que el plugin Performance de Jenkins esté instalado para usar 'performanceReport'
-                        performanceReport errorUnstableThreshold: 0, failureThreshold: 0, showTrendForLastBuilds: 5,
-                            sourceDataFiles: 'test/jmeter/results/jmeter_results.jtl'
+                        performanceReport(
+                            sourceDataFiles: 'test/jmeter/results/jmeter_results.jtl',
+                            errorThreshold: 0, 
+                            unstableRequestThreshold: 0, 
+                        )
                     } finally {
                         echo 'Deteniendo y eliminando contenedores de prueba (Performance) para un workspace limpio...'
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
