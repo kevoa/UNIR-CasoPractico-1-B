@@ -178,14 +178,13 @@ pipeline {
                     cleanWs()
                     unstash name: 'sourceAndConfig'
                     sh 'ls -la'
+                    sh 'mkdir -p reports'
                     echo 'Instalando dependencias de Python (incluyendo flake8)...'
                     sh 'pip install -r requirements.txt --break-system-packages'
 
                     echo 'Ejecutando pruebas de análisis de código estático (flake8)...'
                     sh 'flake8 --format=pylint --exit-zero app > reports/flake8.out || true'
 
-                    // AJUSTE CRÍTICO: Usar la sintaxis explícita '$class' para los parsers.
-                    // Esto le dice a Jenkins exactamente qué objeto Java del plugin debe instanciar.
                     recordIssues(
                         tools: [
                             [
@@ -220,18 +219,13 @@ pipeline {
                     cleanWs()
                     unstash name: 'sourceAndConfig'
                     sh 'ls -la'
+                    sh 'mkdir -p reports'
                     echo 'Instalando dependencias de Python (incluyendo bandit)...'
                     sh 'pip install -r requirements.txt --break-system-packages'
 
                     echo 'Ejecutando pruebas de seguridad (Bandit)...'
                     // Ejecutamos Bandit y generamos el reporte.
-                    // Usamos '|| true' para que el comando no falle la etapa si encuentra problemas de seguridad,
-                    // ya que el parser de Jenkins no funciona.
                     sh 'bandit -r app -f html -o reports/bandit_report.html --msg-template "{abspath}:{line}: {severity}: {test_id}: {msg}" || true'
-
-                    // **IMPORTANTE**: Hemos eliminado el paso `recordIssues` para Bandit
-                    // porque es el que causaba el error `ClassNotFoundException`.
-                    // Ahora Bandit solo generará un reporte HTML que podrás ver como artefacto.
                 }
             }
             post {
@@ -268,9 +262,7 @@ pipeline {
 
                         echo 'Guardando reportes de rendimiento JMeter...'
                         performanceReport(
-                            sourceDataFiles: 'test/jmeter/results/jmeter_results.jtl',
-                            errorThreshold: 0, 
-                            unstableRequestThreshold: 0, 
+                            sourceDataFiles: 'test/jmeter/results/jmeter_results.jtl'
                         )
                     } finally {
                         echo 'Deteniendo y eliminando contenedores de prueba (Performance) para un workspace limpio...'
@@ -313,16 +305,14 @@ pipeline {
                     // Asegúrate de que el plugin "Code Coverage API Plugin" y "Cobertura Plugin" (si usas Cobertura)
                     // estén instalados y actualizados.
                     recordCoverage(
-                        // Cambiamos 'adapters' a 'tools' y movemos la definición del adaptador dentro de él.
                         tools: [
-                            [ $class: 'io.jenkins.plugins.coverage.metrics.adapter.CoberturaReportAdapter', pattern: 'reports/coverage.xml' ] 
-                            // [ $class: 'hudson.plugins.cov.CoberturaReportAdapter', pattern: 'reports/coverage.xml' ] // Para plugin Cobertura más antiguo
+                            [ $class: 'io.jenkins.plugins.coverage.metrics.adapter.CoberturaReportAdapter', pattern: 'reports/coverage.xml' ]
                         ],
                         qualityGates: [
-                            [metric: 'LINE', threshold: 85, critical: true], 
-                            [metric: 'LINE', threshold: 95, unstable: true], 
-                            [metric: 'BRANCH', threshold: 80, critical: true],
-                            [metric: 'BRANCH', threshold: 90, unstable: true]
+                            [value: 85, criterion: 'LINE', threshold: 'CRITICAL', name: 'Line Coverage Critical'],
+                            [value: 95, criterion: 'LINE', threshold: 'UNSTABLE', name: 'Line Coverage Unstable'],
+                            [value: 80, criterion: 'BRANCH', threshold: 'CRITICAL', name: 'Branch Coverage Critical'],
+                            [value: 90, criterion: 'BRANCH', threshold: 'UNSTABLE', name: 'Branch Coverage Unstable']
                         ]
                     )
                 }
