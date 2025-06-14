@@ -1,5 +1,5 @@
 pipeline {
-    agent none // El pipeline en sí no se ejecuta en un agente específico al inicio
+    agent none 
 
     environment {
         // Variables de entorno generales para la aplicación, accesibles en todo el pipeline
@@ -12,37 +12,28 @@ pipeline {
     }
 
     stages {
-        // Etapa 1: Obtener el código fuente del repositorio y preparar el workspace
         stage('1. Get Code & Prepare Workspace') {
             agent {
-                label 'built-in' // Esta etapa se ejecuta en el agente principal de Jenkins (master)
+                label 'built-in' 
             }
             steps {
-                sh 'whoami' // Muestra el usuario actual del agente
-                sh 'hostname' // Muestra el hostname del agente
-                echo "Workspace: ${env.WORKSPACE}" // Muestra la ruta del workspace
+                sh 'whoami' 
+                sh 'hostname'
+                echo "Workspace: ${env.WORKSPACE}" 
 
                 echo 'Descargando repositorio...'
-                // A pesar de ser un Jenkinsfile manual, este paso es CRÍTICO.
-                // Le dice a Jenkins que clone el código fuente de tu aplicación desde el repositorio Git.
-                // Asegúrate de que el job de Jenkins tenga configurado el URL del repositorio Git
-                // y las credenciales si es necesario, incluso si el Jenkinsfile es manual.
                 checkout scm
-                sh 'ls -la' // Lista los archivos en el workspace para verificación
+                sh 'ls -la'
                 echo 'Creando directorio de reportes...'
-                sh 'mkdir -p reports' // Crea el directorio 'reports' para almacenar los resultados de las pruebas
+                sh 'mkdir -p reports' 
 
                 echo 'Guardando el código fuente y archivos del workspace para otras etapas...'
-                // 'stash' guarda los archivos del workspace para que otras etapas en diferentes agentes puedan acceder a ellos.
                 stash name: 'sourceAndConfig', includes: '**/*'
             }
         }
 
-        // Etapa 2: Ejecución de Pruebas Unitarias
         stage('2. Unit Tests') {
             agent {
-                // Esta etapa se ejecuta en el agente específico para pruebas unitarias.
-                // Asegúrate de que este agente esté configurado en Jenkins con la etiqueta 'agent-ssh-jenkins-2-test-unit'.
                 label 'agent-ssh-jenkins-2-test-unit'
             }
             steps {
@@ -50,19 +41,15 @@ pipeline {
                 sh 'hostname'
                 echo "Workspace: ${env.WORKSPACE}"
                 echo 'Preparando workspace para pruebas unitarias...'
-                cleanWs() // Limpia el workspace actual para asegurar un entorno fresco
-                unstash name: 'sourceAndConfig' // 'unstash' recupera los archivos del workspace guardados previamente
+                cleanWs() 
+                unstash name: 'sourceAndConfig' 
                 sh 'ls -la'
-                sh 'mkdir -p reports' // Asegura que el directorio 'reports' exista en este agente
+                sh 'mkdir -p reports' 
 
                 echo 'Instalando dependencias de Python (desde requirements.txt)...'
-                // Instala todas las dependencias listadas en 'requirements.txt'.
-                // La opción '--break-system-packages' es necesaria en algunas distribuciones de Linux/Python recientes.
                 sh 'pip install -r requirements.txt --break-system-packages'
 
                 echo 'Realizando pruebas unitarias...'
-                // Ejecuta pytest para las pruebas unitarias en 'test/unit'.
-                // '--junitxml' genera un informe en formato JUnit XML, que Jenkins puede leer.
                 sh 'python3 -m pytest test/unit --junitxml=reports/TEST-unit.xml'
                 echo 'Pruebas unitarias realizadas.'
 
@@ -70,25 +57,19 @@ pipeline {
                 stash name: 'unitTestReports', includes: 'reports/TEST-unit.xml', allowEmpty: true
             }
             post {
-                // La sección 'post' se ejecuta después de que los 'steps' de la etapa han terminado.
                 always {
-                    // 'junit' publica los resultados de las pruebas unitarias en Jenkins.
-                    // Según los requisitos, esta etapa siempre se mostrará en verde.
                     junit 'reports/TEST-unit.xml'
                     script { echo 'Pruebas unitarias finalizadas. Siempre se mostrará en verde.' }
                 }
             }
         }
 
-        // Etapa 3: Pruebas de Integración (Rest)
         stage('3. Rest Tests') {
             agent {
-                // Esta etapa se ejecuta en el agente específico para pruebas REST.
-                // Asegúrate de que este agente esté configurado en Jenkins con la etiqueta 'agent-ssh-jenkins-2-test-rest'.
                 label 'agent-ssh-jenkins-2-test-rest'
             }
             steps {
-                script { // El bloque 'script' permite usar lógica Groovy más compleja
+                script { 
                     sh 'whoami'
                     sh 'hostname'
                     echo "Workspace: ${env.WORKSPACE}"
@@ -102,34 +83,28 @@ pipeline {
                     def FLASK_HOST_PORT_REST = ''
                     def WIREMOCK_HOST_PORT_REST = ''
                     try {
-                        // Limpiar cualquier contenedor anterior para asegurar un entorno de prueba aislado
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
 
-                        // Verificación de mappings de WireMock (debug)
                         sh 'echo "DEBUG: Verificando directorio de mappings de WireMock en el workspace..."'
                         sh 'ls -la ./test/wiremock/mappings/'
                         sh 'echo "DEBUG: Contenido de ./test/wiremock/mappings/sqrt64.json:"'
                         sh 'cat ./test/wiremock/mappings/sqrt64.json || echo "ERROR: sqrt64.json no encontrado"'
 
                         echo 'Construyendo y levantando entorno para pruebas python-app y wiremock...'
-                        // Levantar solo los servicios necesarios para las pruebas REST
                         sh 'docker compose -f docker-compose.yml up -d --build python-app wiremock_service'
 
                         echo 'Esperando a que los servicios se inicien...'
-                        sh 'sleep 15' // Espera para que los servicios estén completamente levantados
-                        sh 'docker compose -f docker-compose.yml logs python-app' // Muestra logs de la aplicación
-                        sh 'docker compose -f docker-compose.yml exec python-app env' // Muestra variables de entorno en la aplicación
-                        sh 'docker compose -f docker-compose.yml logs wiremock_service' // Muestra logs de wiremock
+                        sh 'sleep 15' 
+                        sh 'docker compose -f docker-compose.yml logs python-app' 
+                        sh 'docker compose -f docker-compose.yml exec python-app env' 
+                        sh 'docker compose -f docker-compose.yml logs wiremock_service' 
 
-                        // Obtener los puertos mapeados dinámicamente al host por docker compose
-                        // Esto es útil si las pruebas REST se conectan desde el host del agente a los contenedores
                         FLASK_HOST_PORT_REST = sh(script: 'docker compose -f docker-compose.yml port python-app 5000', returnStdout: true).trim().split(':')[1]
                         WIREMOCK_HOST_PORT_REST = sh(script: 'docker compose -f docker-compose.yml port wiremock_service 8080', returnStdout: true).trim().split(':')[1]
 
                         echo "DEBUG: FLASK_HOST_PORT_REST detectado: ${FLASK_HOST_PORT_REST}"
                         echo "DEBUG: WIREMOCK_HOST_PORT_REST detectado: ${WIREMOCK_HOST_PORT_REST}"
 
-                        // Construir las URLs para las pruebas REST usando host.docker.internal para acceder a los puertos del host
                         def flaskUrlForTestRest = "http://host.docker.internal:${FLASK_HOST_PORT_REST}"
                         def wiremockUrlForTestRest = "http://host.docker.internal:${WIREMOCK_HOST_PORT_REST}"
 
@@ -142,8 +117,6 @@ pipeline {
                         sh 'mkdir -p reports'
 
                         echo 'Ejecutando pruebas de servicio (REST)...'
-                        // Ejecutar pytest para las pruebas de integración.
-                        // Se pasan las URLs como variables de entorno a pytest.
                         sh """
                             FLASK_TEST_URL="${flaskUrlForTestRest}" \
                             WIREMOCK_TEST_URL="${wiremockUrlForTestRest}" \
@@ -151,7 +124,6 @@ pipeline {
                         """
                         echo 'Pruebas de servicio ejecutadas.'
                     } finally {
-                        // Asegurar que los contenedores se detengan y eliminen incluso si las pruebas fallan
                         echo 'Deteniendo y eliminando contenedores de prueba (REST) para un workspace limpio...'
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
                     }
@@ -167,7 +139,6 @@ pipeline {
             }
         }
 
-        // Etapa 4: Análisis de Código Estático (Flake8)
         stage('4. Static Code Analysis (Flake8)') {
             agent {
                 label 'agent-ssh-jenkins-1-general'
@@ -188,7 +159,7 @@ pipeline {
                     recordIssues(
                         tools: [
                             [
-                                $class: 'io.jenkins.plugins.analysis.warnings.Flake8', // Nombre completo de la clase del parser Flake8
+                                $class: 'io.jenkins.plugins.analysis.warnings.Flake8', 
                                 pattern: 'reports/flake8.out'
                             ]
                         ],
@@ -208,7 +179,6 @@ pipeline {
             }
         }
 
-        // Etapa 5: Pruebas de Seguridad (Bandit) -- ELIMINADA LA INTEGRACIÓN CON recordIssues
         stage('5. Security Test (Bandit)') {
             agent {
                 label 'agent-ssh-jenkins-1-general'
@@ -224,22 +194,18 @@ pipeline {
                     sh 'pip install -r requirements.txt --break-system-packages'
 
                     echo 'Ejecutando pruebas de seguridad (Bandit)...'
-                    // Ejecutamos Bandit y generamos el reporte.
                     sh 'bandit -r app -f html -o reports/bandit_report.html --msg-template "{abspath}:{line}: {severity}: {test_id}: {msg}" || true'
                 }
             }
             post {
                 always {
-                    // Archivamos el reporte HTML generado por Bandit.
                     archiveArtifacts artifacts: 'reports/bandit_report.html', allowEmptyArchive: true
-                    // Stash el reporte para el post-build, si fuera necesario, aunque ahora no se parseará.
                     stash name: 'banditReports', includes: 'reports/bandit_report.html', allowEmpty: true
                     script { echo 'Análisis de Bandit completado. El pipeline continuará la ejecución.' }
                 }
             }
         }
 
-        // Etapa 6: Pruebas de Rendimiento (JMeter)
         stage('6. Performance Tests (JMeter)') {
             agent {
                 label 'agent-ssh-jenkins-1-general'
@@ -251,17 +217,16 @@ pipeline {
                     unstash name: 'sourceAndConfig'
                     sh 'ls -la'
 
-                    sh 'mkdir -p ./test/jmeter/results/html_report' // Esto creará la estructura de carpetas necesaria en el AGENTE
+                    sh 'mkdir -p ./test/jmeter/results/html_report' 
 
                     echo 'Iniciando entorno Docker para pruebas de rendimiento (python-app, wiremock_service, jmeter)...'
                     try {
                         sh 'docker compose -f docker-compose.yml down --volumes --remove-orphans || true'
                         sh 'docker compose -f docker-compose.yml up -d --build python-app wiremock_service jmeter'
                         
-                        sh 'sleep 10' // Ajusta esto según la duración de tu test JMeter
+                        sh 'sleep 10' 
 
                         echo 'Guardando reportes de rendimiento JMeter...'
-                        // Usar catchError para que el pipeline no falle si perfReport tiene problemas
                         catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
                             performanceReport(
                                 sourceDataFiles: 'test/jmeter/results/jmeter_results.jtl'
@@ -282,7 +247,6 @@ pipeline {
             }
         }
         
-        // Etapa 7: Pruebas de Cobertura de Código
         stage('7. Code Coverage') {
             agent {
                 label 'agent-ssh-jenkins-2-test-unit'
@@ -304,9 +268,6 @@ pipeline {
                     sh 'coverage xml -o reports/coverage.xml'
                     sh 'coverage html -d reports/coverage_html_report'
 
-                    // AJUSTE CRÍTICO: Usar la sintaxis explícita '$class' para el adaptador Cobertura.
-                    // Asegúrate de que el plugin "Code Coverage API Plugin" y "Cobertura Plugin" (si usas Cobertura)
-                    // estén instalados y actualizados.
                     recordCoverage(
                         tools: [
                             [ parser: 'COBERTURA', pattern: 'reports/coverage.xml' ] 
@@ -336,21 +297,14 @@ pipeline {
                 echo 'Fin del Pipeline. Recopilando todos los reportes...'
                 sh 'mkdir -p reports'
 
-                // IMPORTANTE: Eliminados 'quiet: true' de los unstash, ya que no es un parámetro válido.
                 unstash name: 'unitTestReports'
                 unstash name: 'restTestReports'
                 unstash name: 'flake8Reports'
-                // Ya no hay un 'banditReports' en el unstash del post principal,
-                // ya que su integración con recordIssues fue eliminada
-                // y su stash ahora es solo para el artefacto, no para un post-procesamiento.
                 unstash name: 'jmeterReports'
                 unstash name: 'coverageReports'
 
                 junit 'reports/TEST-unit.xml'
                 junit 'reports/TEST-rest.xml'
-                // Aquí no se añade Bandit, ya que no estamos usando su parser de Jenkins.
-                // El reporte de Bandit se archivará como un artefacto normal.
-
                 archiveArtifacts artifacts: 'reports/*.xml,reports/*.csv,reports/**/*.out,reports/**/*html*', allowEmptyArchive: true
 
                 cleanWs()
