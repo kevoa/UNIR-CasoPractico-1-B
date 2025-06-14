@@ -129,13 +129,8 @@ pipeline {
                     echo 'Ejecutando pruebas de análisis de código estático (flake8)...'
                     sh 'flake8 --format=pylint --exit-zero app > reports/flake8.out || true'
 
-                    // AJUSTE CRÍTICO: Usar el método 'scanForIssues' o directamente el parser si está expuesto
-                    // La forma 'tool: [parser: ...]' requiere un $class que no es el DSL.
-                    // Flake8 y Bandit son parsers específicos del plugin Warnings.
-                    // La documentación del plugin Warnings (Next Generation) sugiere que se usan como recordIssues(tool: flake8(...))
-                    // Si eso no funciona, probaremos con scanForIssues(tool: [id: 'flake8', name: 'Flake8', pattern: 'reports/flake8.out'])
-                    // Pero el error "must specify $class" es muy específico para la sintaxis anterior.
-                    // Volvemos a la sintaxis original (que DEBERÍA ser la correcta para Warnings-NG)
+                    // REVERTIDO A LA SINTAXIS ORIGINAL QUE LOS APUNTES INDICAN PARA WARNINGS-NG
+                    // Esta sintaxis DEBERÍA ser la correcta si el plugin está bien instalado.
                     recordIssues(
                         tools: [
                             flake8(pattern: 'reports/flake8.out')
@@ -170,6 +165,7 @@ pipeline {
                     echo 'Ejecutando pruebas de seguridad (Bandit)...'
                     sh 'bandit -r app -f custom -o reports/bandit.out --msg-template "{abspath}:{line}: {severity}: {test_id}: {msg}" || true'
 
+                    // REVERTIDO A LA SINTAXIS ORIGINAL QUE LOS APUNTES INDICAN PARA WARNINGS-NG
                     recordIssues(
                         tools: [
                             bandit(pattern: 'reports/bandit.out')
@@ -249,7 +245,6 @@ pipeline {
                     sh 'coverage xml -o reports/coverage.xml'
                     sh 'coverage html -d reports/coverage_html_report'
 
-                    // AJUSTE PARA EL PLUGIN 'Coverage'
                     recordCoverage(
                         adapters: [
                             cobertura(pattern: 'reports/coverage.xml')
