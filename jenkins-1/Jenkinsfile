@@ -129,11 +129,16 @@ pipeline {
                     echo 'Ejecutando pruebas de análisis de código estático (flake8)...'
                     sh 'flake8 --format=pylint --exit-zero app > reports/flake8.out || true'
 
-                    // AJUSTE PARA EL PLUGIN 'Warnings' (antes Warnings Next Generation)
+                    // AJUSTE CRÍTICO: Usar el método 'scanForIssues' o directamente el parser si está expuesto
+                    // La forma 'tool: [parser: ...]' requiere un $class que no es el DSL.
+                    // Flake8 y Bandit son parsers específicos del plugin Warnings.
+                    // La documentación del plugin Warnings (Next Generation) sugiere que se usan como recordIssues(tool: flake8(...))
+                    // Si eso no funciona, probaremos con scanForIssues(tool: [id: 'flake8', name: 'Flake8', pattern: 'reports/flake8.out'])
+                    // Pero el error "must specify $class" es muy específico para la sintaxis anterior.
+                    // Volvemos a la sintaxis original (que DEBERÍA ser la correcta para Warnings-NG)
                     recordIssues(
-                        tool: [
-                            parser: 'Flake8', // Usar el ID del parser si está disponible
-                            pattern: 'reports/flake8.out'
+                        tools: [
+                            flake8(pattern: 'reports/flake8.out')
                         ],
                         qualityGates: [
                             [threshold: 10, type: 'TOTAL', result: 'FAILURE', name: 'Flake8 Unhealthy Threshold'],
@@ -165,11 +170,9 @@ pipeline {
                     echo 'Ejecutando pruebas de seguridad (Bandit)...'
                     sh 'bandit -r app -f custom -o reports/bandit.out --msg-template "{abspath}:{line}: {severity}: {test_id}: {msg}" || true'
 
-                    // AJUSTE PARA EL PLUGIN 'Warnings' (antes Warnings Next Generation)
                     recordIssues(
-                        tool: [
-                            parser: 'Bandit', // Usar el ID del parser si está disponible
-                            pattern: 'reports/bandit.out'
+                        tools: [
+                            bandit(pattern: 'reports/bandit.out')
                         ],
                         qualityGates: [
                             [threshold: 4, type: 'TOTAL', result: 'FAILURE', name: 'Bandit Unhealthy Threshold'],
@@ -249,10 +252,6 @@ pipeline {
                     // AJUSTE PARA EL PLUGIN 'Coverage'
                     recordCoverage(
                         adapters: [
-                            // Usar el ID del adapter si está disponible, o simplemente la clase/nombre.
-                            // Si solo 'Cobertura' es un método directo del plugin 'Coverage', usarlo así.
-                            // Si 'coberturaAdapter' es el problema, podría ser simplemente 'cobertura(pattern: 'reports/coverage.xml')'
-                            // Probamos con 'cobertura' directamente, que es común en estos plugins.
                             cobertura(pattern: 'reports/coverage.xml')
                         ],
                         qualityGates: [
