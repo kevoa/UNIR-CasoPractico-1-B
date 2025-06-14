@@ -92,12 +92,15 @@ services:
     image: justb4/jmeter:5.4 
     container_name: jmeter
     volumes:
-      - ./test/jmeter/test_plans:/jmeter/apache-jmeter-5.4/bin/test_plans 
-      - ./test/jmeter/results:/jmeter/apache-jmeter-5.4/bin/results 
+      # Montamos la carpeta de test_plans local en /opt/jmeter/bin/test_plans dentro del contenedor
+      - ./test/jmeter/test_plans:/opt/jmeter/bin/test_plans
+      # Montamos la carpeta de resultados local en /opt/jmeter/bin/results dentro del contenedor
+      - ./test/jmeter/results:/opt/jmeter/bin/results
     networks:
       - devops_network
     depends_on:
-      - python-app 
+      - python-app
+    # El comando que JMeter ejecutará al INICIAR el contenedor
     command: ["-n", "-t", "/opt/jmeter/bin/test_plans/flask.jmx", "-l", "/opt/jmeter/bin/results/jmeter_results.jtl", "-e", "-o", "/opt/jmeter/bin/results/html_report"]
 
 networks:
