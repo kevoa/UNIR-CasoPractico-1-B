@@ -92,18 +92,19 @@ services:
     image: justb4/jmeter:5.4 
     container_name: jmeter
     volumes:
-      - ./test/jmeter/test_plans:/jmeter_tests 
+      - ./test/jmeter:/jmeter_tests 
       
       - ./test/jmeter/results:/jmeter_results 
     networks:
       - devops_network
     depends_on:
       - python-app 
+
     command: ["-n", 
-              "-t", "/jmeter_tests/flask.jmx", # El test plan está en /jmeter_tests
-              "-l", "/jmeter_results/jmeter_results.jtl", # El log de resultados va a /jmeter_results
+              "-t", "/jmeter_tests/flask.jmx", 
+              "-l", "/jmeter_results/jmeter_results.jtl", 
               "-e", 
-              "-o", "/jmeter_results/html_report"] # El reporte HTML va a /jmeter_results
+              "-o", "/jmeter_results/html_report"]
               
 networks:
   devops_network:
